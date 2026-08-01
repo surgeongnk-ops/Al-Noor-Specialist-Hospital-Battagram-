@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Al Noor Specialist Hospital | Battagram</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* --- AI Chatbot Widget --- */
+        #chat-toggle {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: var(--secondary, #008080);
+            color: #fff;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+            z-index: 2000;
+        }
+        #chat-window {
+            position: fixed;
+            bottom: 96px;
+            right: 24px;
+            width: 340px;
+            max-width: 90vw;
+            height: 460px;
+            max-height: 70vh;
+            background: #fff;
+            border-radius: 14px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 2000;
+            font-family: 'Inter', sans-serif;
+        }
+        #chat-window.open { display: flex; }
+        #chat-header {
+            background: var(--primary, #003366);
+            color: #fff;
+            padding: 14px 16px;
+            font-weight: 700;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #chat-header span.status { font-weight: 400; font-size: 12px; opacity: 0.85; }
+        #chat-close { background: none; border: none; color: #fff; font-size: 18px; cursor: pointer; }
+        #chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: #f4f7f6;
+        }
+        .chat-msg { max-width: 85%; padding: 9px 13px; border-radius: 12px; font-size: 14px; line-height: 1.4; }
+        .chat-msg.bot { background: #e6eef2; color: #1a1a1a; align-self: flex-start; border-bottom-left-radius: 2px; }
+        .chat-msg.user { background: var(--secondary, #008080); color: #fff; align-self: flex-end; border-bottom-right-radius: 2px; }
+        .chat-msg.typing { font-style: italic; opacity: 0.7; }
+        #chat-input-row { display: flex; border-top: 1px solid #eee; }
+        #chat-input {
+            flex: 1;
+            border: none;
+            padding: 12px;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        #chat-input:focus { outline: none; }
+        #chat-send {
+            background: var(--secondary, #008080);
+            color: #fff;
+            border: none;
+            padding: 0 18px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+        :root {
+            --primary: #003366; /* Deep Navy */
+            --secondary: #008080; /* Teal */
+            --accent: #D4AF37; /* Gold/Amber */
+            --light: #f4f7f6;
+            --white: #ffffff;
+            --dark: #1a1a1a;
+            --transition: all 0.3s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+            color: var(--dark);
+            scroll-behavior: smooth;
+        }
+
+        /* --- Header & Logo --- */
+        header {
+            background: var(--white);
+            box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .top-bar {
+            background: var(--primary);
+            color: var(--white);
+            padding: 8px 5%;
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+        }
+
+        .top-bar-info span {
+            margin-right: 20px;
+        }
+
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 5%;
+        }
+
+        .logo-container {
+            text-decoration: none;
+            display: flex;
+            flex-direction: column;
+            line-height: 1;
+        }
+
+        .logo-primary {
+            font-family: 'Playfair Display', serif;
+            font-size: 32px;
+            font-weight: 800;
+            color: var(--primary);
+            letter-spacing: 1px;
+        }
+
+        .logo-subtitle {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--secondary);
+            letter-spacing: 3.5px;
+            margin-top: 4px;
+            border-top: 1px solid var(--accent);
+            padding-top: 4px;
+        }
+
+        .nav-links {
+            display: flex;
+            list-style: none;
+        }
+
+        .nav-links li {
+            margin-left: 30px;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--primary);
+            font-weight: 600;
+            font-size: 15px;
+            transition: var(--transition);
+        }
+
+        .nav-links a:hover {
+            color: var(--secondary);
+        }
+
+        /* --- Hero Section --- */
+        .hero {
+            height: 85vh;
+            background: linear-gradient(rgba(0,51,102,0.7), rgba(0,51,102,0.7)), 
+                        url('https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&w=1920&q=80');
+            background-size: cover;
+            background-position: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: var(--white);
+            padding: 0 20px;
+        }
+
+        .hero-content h2 {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            font-family: 'Playfair Display', serif;
+        }
+
+        .hero-content p {
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .btn {
+            padding: 15px 35px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 700;
+            transition: var(--transition);
+            display: inline-block;
+            cursor: pointer;
+            border: none;
+        }
+
+        .btn-primary {
+            background: var(--secondary);
+            color: var(--white);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent);
+            transform: translateY(-3px);
+        }
+
+        /* --- Info Cards --- */
+        .info-strip {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            max-width: 1100px;
+            margin: -50px auto 50px;
+            padding: 0 20px;
+        }
+
+        .info-card {
+            background: var(--white);
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            text-align: center;
+            border-bottom: 4px solid var(--secondary);
+        }
+
+        .info-card i {
+            font-size: 2rem;
+            color: var(--secondary);
+            margin-bottom: 15px;
+        }
+
+        .info-card h4 { margin-bottom: 10px; color: var(--primary); }
+
+        /* --- Doctors Section --- */
+        .section-padding { padding: 80px 5%; }
+        .section-title {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+        .section-title h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.5rem;
+            color: var(--primary);
+            position: relative;
+            padding-bottom: 15px;
+        }
+        .section-title h2::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 3px;
+            background: var(--accent);
+        }
+
+        .doctor-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .doctor-card {
+            background: var(--white);
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+            text-align: center;
+            transition: var(--transition);
+            border: 1px solid #eee;
+        }
+
+        .doctor-card:hover {
+            transform: translateY(-10px);
+        }
+
+        .doctor-img {
+            height: 250px;
+            background: #e9ecef;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 80px;
+            color: var(--primary);
+        }
+
+        .doctor-info { padding: 25px; }
+        .doctor-info h3 { color: var(--primary); margin-bottom: 5px; }
+        .doctor-info .specialty { color: var(--secondary); font-weight: 700; margin-bottom: 10px; display: block; }
+        .doctor-info .qual { font-size: 14px; color: #666; }
+
+        /* --- Employee Email Form --- */
+        #staff-email { background: var(--light); }
+        .form-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: var(--white);
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.05);
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+
+        .form-group { margin-bottom: 20px; }
+        .form-group.full-width { grid-column: span 2; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: 600; font-size: 14px; }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            outline: none;
+            transition: var(--transition);
+        }
+        .form-group input:focus { border-color: var(--secondary); }
+
+        .email-input-wrapper { display: flex; align-items: center; }
+        .email-input-wrapper span { background: #eee; padding: 12px; border: 1px solid #ddd; border-left: none; font-size: 14px; color: #666; }
+
+        /* --- Contact & Footer --- */
+        footer {
+            background: var(--primary);
+            color: var(--white);
+            padding: 60px 5% 20px;
+        }
+
+        .footer-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 40px;
+            margin-bottom: 40px;
+        }
+
+        .footer-about .logo-primary { color: var(--white); }
+        .footer-about .logo-subtitle { color: var(--accent); }
+
+        .footer-links h4 { margin-bottom: 20px; border-left: 3px solid var(--accent); padding-left: 10px; }
+        .footer-links p { margin-bottom: 10px; display: flex; align-items: center; }
+        .footer-links i { margin-right: 15px; color: var(--accent); }
+
+        .map-container {
+            height: 200px;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #eee;
+        }
+
+        .copyright {
+            text-align: center;
+            padding-top: 30px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            font-size: 14px;
+        }
+
+        /* --- Mobile Responsiveness --- */
+        @media (max-width: 768px) {
+            .top-bar { display: none; }
+            .navbar { flex-direction: column; }
+            .nav-links { margin-top: 20px; gap: 15px; }
+            .nav-links li { margin-left: 0; }
+            .hero-content h2 { font-size: 2rem; }
+            .info-strip { grid-template-columns: 1fr; margin-top: 20px; }
+            .form-grid { grid-template-columns: 1fr; }
+            .form-group.full-width { grid-column: span 1; }
+        }
+
+        /* Success Message Overlay */
+        #success-msg {
+            display: none;
+            background: #d4edda;
+            color: #155724;
+            padding: 20px;
+            border-radius: 5px;
+            margin-top: 20px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .scroll-top {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--secondary);
+            color: white;
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            opacity: 0;
+            transition: var(--transition);
+        }
+        .scroll-top.visible { opacity: 1; }
+    </style>
+</head>
+<body>
+
+    <!-- Header Section -->
+    <header>
+        <div class="top-bar">
+            <div class="top-bar-info">
+                <span><i class="fas fa-phone"></i> 0997310399</span>
+                <span><i class="fas fa-clock"></i> Emergency: 24/7</span>
+            </div>
+            <div class="top-bar-social">
+                <i class="fab fa-facebook"></i> | District Battagram, KP
+            </div>
+        </div>
+        <nav class="navbar">
+            <a href="#" class="logo-container">
+                <span class="logo-primary">AL-NOOR</span>
+                <span class="logo-subtitle">SPECIALIST HOSPITAL</span>
+            </a>
+            <ul class="nav-links">
+                <li><a href="#home">Home</a></li>
+                <li><a href="#about">About</a></li>
+                <li><a href="#doctors">Consultants</a></li>
+                <li><a href="#services">Services</a></li>
+                <li><a href="#staff-email">Staff Email</a></li>
+                <li><a href="#contact">Contact</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero" id="home">
+        <div class="hero-content">
+            <h2>Your Health, Our Priority</h2>
+            <p>Providing state-of-the-art medical care to the people of Battagram. Expertise you can trust, compassion you can feel.</p>
+            <a href="tel:0997310399" class="btn btn-primary">Book an Appointment</a>
+        </div>
+    </section>
+
+    <!-- Info Cards -->
+    <div class="info-strip">
+        <div class="info-card">
+            <i class="fas fa-ambulance"></i>
+            <h4>Emergency Services</h4>
+            <p>Operational 24/7 round the clock for urgent medical needs.</p>
+        </div>
+        <div class="info-card">
+            <i class="fas fa-user-md"></i>
+            <h4>Expert Consultants</h4>
+            <p>Qualified specialists in General Surgery and Gynae/Obs.</p>
+        </div>
+        <div class="info-card">
+            <i class="fas fa-clock"></i>
+            <h4>OPD Timings</h4>
+            <p>Daily Consultation:<br><strong>2:00 PM to 10:00 PM</strong></p>
+        </div>
+    </div>
+
+    <!-- About Section -->
+    <section class="section-padding" id="about">
+        <div class="section-title">
+            <h2>About Al Noor Hospital</h2>
+        </div>
+        <div style="max-width: 800px; margin: 0 auto; text-align: center;">
+            <p>Located on the Karakuram Highway Doraha in District Battagram, Al Noor Specialist Hospital is a leading healthcare institution dedicated to providing high-quality medical and surgical services. Our mission is to bridge the gap in specialist healthcare in the region through modern technology and expert medical practitioners.</p>
+        </div>
+    </section>
+
+    <!-- Doctors Section -->
+    <section class="section-padding" id="doctors" style="background: #fdfdfd;">
+        <div class="section-title">
+            <h2>Our Senior Consultants</h2>
+        </div>
+        <div class="doctor-grid">
+            <!-- Doctor 1 -->
+            <div class="doctor-card">
+                <div class="doctor-img">
+                    <i class="fas fa-user-md"></i>
+                </div>
+                <div class="doctor-info">
+                    <h3>Dr. Hafiz Gul Nasib Khan</h3>
+                    <span class="specialty">District Specialist - General Surgery</span>
+                    <p class="qual">MBBS, FCPS, CHPE</p>
+                </div>
+            </div>
+            <!-- Doctor 2 -->
+            <div class="doctor-card">
+                <div class="doctor-img">
+                    <i class="fas fa-user-nurse"></i>
+                </div>
+                <div class="doctor-info">
+                    <h3>Dr. Naseema Usman</h3>
+                    <span class="specialty">District Specialist - Gynae & Obs</span>
+                    <p class="qual">MBBS, FCPS, CHPE</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Services Section -->
+    <section class="section-padding" id="services">
+        <div class="section-title">
+            <h2>Hospital Departments</h2>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 30px;">
+            <div style="text-align:center; padding: 20px; border: 1px solid #eee;">
+                <i class="fas fa-scalpel" style="font-size: 30px; color: var(--secondary); margin-bottom:15px;"></i>
+                <h4>General Surgery</h4>
+            </div>
+            <div style="text-align:center; padding: 20px; border: 1px solid #eee;">
+                <i class="fas fa-baby" style="font-size: 30px; color: var(--secondary); margin-bottom:15px;"></i>
+                <h4>Gynecology</h4>
+            </div>
+            <div style="text-align:center; padding: 20px; border: 1px solid #eee;">
+                <i class="fas fa-heartbeat" style="font-size: 30px; color: var(--secondary); margin-bottom:15px;"></i>
+                <h4>24/7 Emergency</h4>
+            </div>
+            <div style="text-align:center; padding: 20px; border: 1px solid #eee;">
+                <i class="fas fa-vial" style="font-size: 30px; color: var(--secondary); margin-bottom:15px;"></i>
+                <h4>Diagnostic Lab</h4>
+            </div>
+            <div style="text-align:center; padding: 20px; border: 1px solid #eee;">
+                <i class="fas fa-pills" style="font-size: 30px; color: var(--secondary); margin-bottom:15px;"></i>
+                <h4>Pharmacy</h4>
+            </div>
+        </div>
+    </section>
+
+    <!-- Staff Email Section -->
+    <section class="section-padding" id="staff-email">
+        <div class="section-title">
+            <h2>Staff Email Request</h2>
+            <p>Authorized personnel only. Request your official @alnoorspecialist.com account.</p>
+        </div>
+        <div class="form-container">
+            <form id="emailRequestForm" name="email-request" method="POST" data-netlify="true" netlify-honeypot="bot-field">
+                <input type="hidden" name="form-name" value="email-request">
+                <p style="display:none;"><label>Don't fill this out: <input name="bot-field"></label></p>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Full Name</label>
+                        <input type="text" name="full_name" required placeholder="Enter your full name">
+                    </div>
+                    <div class="form-group">
+                        <label>Employee ID / CNIC</label>
+                        <input type="text" name="employee_id" required placeholder="XXXXX-XXXXXXX-X">
+                    </div>
+                    <div class="form-group">
+                        <label>Department</label>
+                        <select name="department" required>
+                            <option value="">Select Department</option>
+                            <option>General Surgery</option>
+                            <option>Gynecology</option>
+                            <option>Emergency</option>
+                            <option>Pharmacy</option>
+                            <option>Admin</option>
+                            <option>Nursing</option>
+                            <option>Lab</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Designation / Job Title</label>
+                        <input type="text" name="designation" required placeholder="e.g. Staff Nurse">
+                    </div>
+                    <div class="form-group">
+                        <label>Preferred Email Username</label>
+                        <div class="email-input-wrapper">
+                            <input type="text" name="email_username" required placeholder="e.g. hafiz.gul">
+                            <span>@alnoorspecialist.com</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Contact Number</label>
+                        <input type="tel" name="contact_number" required placeholder="03XXXXXXXXX">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 20px;">Submit Request</button>
+            </form>
+            <div id="success-msg">
+                Your email request has been submitted. You will receive your credentials within 24-48 hours.
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer id="contact">
+        <div class="footer-grid">
+            <div class="footer-about">
+                <a href="#" class="logo-container" style="margin-bottom: 20px;">
+                    <span class="logo-primary">AL-NOOR</span>
+                    <span class="logo-subtitle">SPECIALIST HOSPITAL</span>
+                </a>
+                <p>Providing excellence in medical services at the heart of Battagram. Registered and specialized healthcare facility.</p>
+            </div>
+            <div class="footer-links">
+                <h4>Contact Details</h4>
+                <p><i class="fas fa-map-marker-alt"></i> Karakuram Highway Doraha, District Battagram, KP, Pakistan</p>
+                <p><i class="fas fa-phone"></i> 0997310399</p>
+                <p><i class="fas fa-envelope"></i> surgeongnk@gmail.com</p>
+            </div>
+            <div class="footer-links">
+                <h4>Location Map</h4>
+                <div class="map-container">
+                    <!-- Placeholder for actual Google Map -->
+                    <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d13146.54145781358!2d73.018318!3d34.663884!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x38de6b567d284343%3A0x67373f1d2e2607e4!2sBattagram%2C%20Khyber%20Pakhtunkhwa!5e0!3m2!1sen!2spk!4v1690000000000!5m2!1sen!2spk" width="100%" height="100%" style="border:0;" allowfullscreen="" loading="lazy"></iframe>
+                </div>
+            </div>
+        </div>
+        <div class="copyright">
+            &copy; 2024 Al Noor Specialist Hospital. All rights reserved.
+        </div>
+    </footer>
+
+    <!-- Scroll Top -->
+    <div class="scroll-top" id="scrollTop">
+        <i class="fas fa-chevron-up"></i>
+    </div>
+
+    <script>
+        // Form Handling
+        const form = document.getElementById('emailRequestForm');
+        const successMsg = document.getElementById('success-msg');
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(form);
+
+            fetch("/", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams(formData).toString(),
+            })
+            .then(() => {
+                form.style.display = 'none';
+                successMsg.style.display = 'block';
+            })
+            .catch((error) => {
+                alert("Sorry, something went wrong submitting your request. Please try again or call the hospital directly.");
+                console.error(error);
+            });
+        });
+
+        // Scroll Top Logic
+        const scrollTopBtn = document.getElementById('scrollTop');
+        window.addEventListener('scroll', () => {
+            if (window.pageYOffset > 300) {
+                scrollTopBtn.classList.add('visible');
+            } else {
+                scrollTopBtn.classList.remove('visible');
+            }
+        });
+
+        scrollTopBtn.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+
+        // Smooth scrolling for nav links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+    </script>
+
+    <!-- AI Chatbot Widget -->
+    <button id="chat-toggle" aria-label="Chat with us"><i class="fas fa-comment-medical"></i></button>
+    <div id="chat-window">
+        <div id="chat-header">
+            <div>Al Noor Assistant<br><span class="status">Ask about doctors, timings, services</span></div>
+            <button id="chat-close" aria-label="Close chat">&times;</button>
+        </div>
+        <div id="chat-messages">
+            <div class="chat-msg bot">Assalam-o-Alaikum! I'm the Al Noor Hospital assistant. Ask me about OPD timings, our doctors, departments, or how to get here.</div>
+        </div>
+        <div id="chat-input-row">
+            <input id="chat-input" type="text" placeholder="Type your question..." autocomplete="off">
+            <button id="chat-send">Send</button>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const toggleBtn = document.getElementById('chat-toggle');
+            const chatWindow = document.getElementById('chat-window');
+            const closeBtn = document.getElementById('chat-close');
+            const messagesEl = document.getElementById('chat-messages');
+            const inputEl = document.getElementById('chat-input');
+            const sendBtn = document.getElementById('chat-send');
+
+            let history = [];
+
+            toggleBtn.addEventListener('click', () => chatWindow.classList.toggle('open'));
+            closeBtn.addEventListener('click', () => chatWindow.classList.remove('open'));
+
+            function addMessage(text, role) {
+                const div = document.createElement('div');
+                div.className = 'chat-msg ' + (role === 'user' ? 'user' : 'bot');
+                div.textContent = text;
+                messagesEl.appendChild(div);
+                messagesEl.scrollTop = messagesEl.scrollHeight;
+                return div;
+            }
+
+            async function sendMessage() {
+                const text = inputEl.value.trim();
+                if (!text) return;
+                addMessage(text, 'user');
+                history.push({ role: 'user', content: text });
+                inputEl.value = '';
+
+                const typingEl = addMessage('Typing...', 'bot');
+                typingEl.classList.add('typing');
+
+                try {
+                    const res = await fetch('/.netlify/functions/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ messages: history }),
+                    });
+                    const data = await res.json();
+                    typingEl.remove();
+                    if (data.reply) {
+                        addMessage(data.reply, 'bot');
+                        history.push({ role: 'assistant', content: data.reply });
+                    } else {
+                        addMessage('Sorry, I ran into an issue. Please call 0997310399 for help.', 'bot');
+                    }
+                } catch (err) {
+                    typingEl.remove();
+                    addMessage('Sorry, I could not connect. Please call 0997310399 for help.', 'bot');
+                }
+            }
+
+            sendBtn.addEventListener('click', sendMessage);
+            inputEl.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') sendMessage();
+            });
+        })();
+    </script>
+</body>
+</html>
