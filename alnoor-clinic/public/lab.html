@@ -281,14 +281,23 @@ async function loadAnalyzerInbox() {
   el.innerHTML = '<table><tr><th>Received</th><th>Analyzer</th><th>Specimen</th><th>Matched Order</th><th>Results (raw)</th><th>Status</th><th></th></tr>' +
     rows.map(r => {
       const resultsPreview = (r.parsed.results || []).map(x => `${esc(x.source_name || x.source_code)}: ${esc(x.value)}${x.unit ? ' ' + esc(x.unit) : ''}`).join('<br>');
+      const aiResults = (r.ai_suggested && r.ai_suggested.results) || [];
+      const aiPreview = aiResults.length
+        ? `<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #ccc;">
+             <span class="badge" style="background:#eef;color:#224;">Claude suggested</span><br>
+             ${aiResults.map(x => `${esc(x.source_name || x.source_code)}: ${esc(x.value)}${x.unit ? ' ' + esc(x.unit) : ''}`).join('<br>')}
+           </div>`
+        : '';
       const orderInfo = r.order ? `${esc(r.order.patient_name)} (${esc(r.order.mr_number)})<br><span class="muted">${esc(r.order.status)}</span>` : '<span class="muted">—</span>';
       let actions = '';
       if (r.match_status === 'unmatched') {
         actions = `<button class="secondary" onclick="matchInboxEntry(${r.id})">Match to Order</button>
+          <button class="secondary" onclick="aiSuggestInboxEntry(${r.id})">Ask Claude to Re-Parse</button>
           <button class="secondary" onclick="discardInboxEntry(${r.id})">Discard</button>`;
       } else if (r.match_status === 'matched') {
         actions = `<button class="primary" onclick="importInboxEntry(${r.id})">Import to Result Entry</button>
           <button class="secondary" onclick="matchInboxEntry(${r.id})">Re-match</button>
+          <button class="secondary" onclick="aiSuggestInboxEntry(${r.id})">Ask Claude to Re-Parse</button>
           <button class="secondary" onclick="discardInboxEntry(${r.id})">Discard</button>`;
       } else if (r.match_status === 'imported') {
         actions = `<span class="badge done">Imported${r.imported_by ? ' by ' + esc(r.imported_by) : ''}</span>`;
@@ -300,7 +309,7 @@ async function loadAnalyzerInbox() {
         <td>${esc(ANALYZER_NAMES[r.analyzer_key] || r.analyzer_key)}</td>
         <td>${esc(r.specimen_id_guess || '—')}</td>
         <td>${orderInfo}</td>
-        <td style="font-size:12px;">${resultsPreview || '<span class="muted">(no results parsed)</span>'}</td>
+        <td style="font-size:12px;">${resultsPreview || '<span class="muted">(no results parsed)</span>'}${aiPreview}</td>
         <td>${esc(r.match_status)}</td>
         <td>${actions}</td>
       </tr>`;
@@ -314,6 +323,19 @@ async function matchInboxEntry(inboxId) {
     const found = await api('/api/analyzers/resolve-specimen?specimen_id=' + encodeURIComponent(specimen));
     await api(`/api/analyzers/inbox/${inboxId}/match`, { method: 'POST', body: JSON.stringify({ order_id: found.order_id }) });
     toast(`Matched to ${found.patient_name} (${found.mr_number}).`, 'success');
+    loadAnalyzerInbox();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+// Asks Claude to take another pass at this entry's raw_payload — only used
+// when the raw best-effort tokenizer above made a poor guess. Purely
+// on-demand (see analyzers/claudeFallback.js); the suggestion is stored
+// alongside the row and shown here for review, same as the raw guess, and
+// changes nothing until the technician Imports and Saves as usual.
+async function aiSuggestInboxEntry(inboxId) {
+  try {
+    const res = await api(`/api/analyzers/inbox/${inboxId}/ai-suggest`, { method: 'POST' });
+    toast(`Claude suggested ${res.suggestion.results.length} result(s) — review below before importing.`, 'success');
     loadAnalyzerInbox();
   } catch (ex) { toast(ex.message, 'error'); }
 }

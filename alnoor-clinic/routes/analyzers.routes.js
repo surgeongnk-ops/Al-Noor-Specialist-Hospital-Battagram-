@@ -13,6 +13,12 @@ const { db, logAudit } = require('../db');
 const { sendJSON, sendError, readBody, requireAuth, asyncHandler } = require('../middleware');
 const analyzers = require('../analyzers');
 const { findOrderBySpecimenId } = require('../analyzers/inbox');
+const claudeFallback = require('../analyzers/claudeFallback');
+
+function parseAiSuggested(row) {
+  if (!row.ai_suggested_json) return null;
+  try { return JSON.parse(row.ai_suggested_json); } catch { return null; }
+}
 
 const router = createRouter();
 
@@ -118,7 +124,7 @@ router.get('/api/analyzers/inbox', asyncHandler(async (req, res, match, url) => 
     }
     let parsed = {};
     try { parsed = JSON.parse(r.parsed_json || '{}'); } catch { /* leave empty */ }
-    return { ...r, parsed_json: undefined, parsed, order };
+    return { ...r, parsed_json: undefined, ai_suggested_json: undefined, parsed, ai_suggested: parseAiSuggested(r), order };
   });
   return sendJSON(res, 200, withOrders);
 }));
@@ -129,7 +135,37 @@ router.get(/^\/api\/analyzers\/inbox\/(\d+)$/, asyncHandler(async (req, res, mat
   if (!row) return sendError(res, 404, 'Inbox entry not found');
   let parsed = {};
   try { parsed = JSON.parse(row.parsed_json || '{}'); } catch { /* leave empty */ }
-  return sendJSON(res, 200, { ...row, parsed_json: undefined, parsed });
+  return sendJSON(res, 200, { ...row, parsed_json: undefined, ai_suggested_json: undefined, parsed, ai_suggested: parseAiSuggested(row) });
+}));
+
+// On-demand AI-assisted re-parse: a lab technician looking at a
+// low-confidence Analyzer Inbox entry (see serialBridge.js's "best-effort
+// tokenizer" — undocumented Swelab/Microlab serial output is genuinely
+// ambiguous) can ask Claude to take another pass at raw_payload. This is
+// the ONLY place anything in this app calls out to the internet, and only
+// when a human deliberately clicks the button — never automatically on
+// capture (this hospital runs offline day-to-day; see db.js's header
+// comment). Exactly like every other path into this inbox, the result is
+// stored alongside the row for review and never touches lab_orders.results.
+router.post(/^\/api\/analyzers\/inbox\/(\d+)\/ai-suggest$/, asyncHandler(async (req, res, match) => {
+  const staff = requireAuth(req, res, ['admin', 'lab', 'pathologist']); if (!staff) return;
+  const row = db.prepare('SELECT * FROM analyzer_result_inbox WHERE id = ?').get(Number(match[1]));
+  if (!row) return sendError(res, 404, 'Inbox entry not found');
+  if (!claudeFallback.isConfigured()) {
+    return sendError(res, 400, 'ANTHROPIC_API_KEY is not configured on this server — ask an admin to set it before using AI-assisted parsing');
+  }
+
+  let suggestion;
+  try {
+    suggestion = await claudeFallback.suggestResults(row.raw_payload);
+  } catch (err) {
+    return sendError(res, 502, `Claude could not parse this message: ${err.message}`);
+  }
+
+  db.prepare('UPDATE analyzer_result_inbox SET ai_suggested_json = ? WHERE id = ?').run(JSON.stringify(suggestion), row.id);
+  logAudit(staff.staff_id, 'analyzer_ai_suggest', null, `inbox #${row.id}: ${suggestion.results.length} result(s) suggested`);
+
+  return sendJSON(res, 200, { ok: true, suggestion });
 }));
 
 // Manually associate an unmatched entry with an order — needed whenever the
@@ -173,10 +209,17 @@ router.post(/^\/api\/analyzers\/inbox\/(\d+)\/import$/, asyncHandler(async (req,
 
   let parsed = {};
   try { parsed = JSON.parse(row.parsed_json || '{}'); } catch { /* leave empty */ }
+  const aiSuggested = parseAiSuggested(row);
+  // A Claude suggestion supersedes the naive tokenizer's raw guess for this
+  // import: a technician only generates one because the raw guess was too
+  // poor to trust. Both stay visible in GET /api/analyzers/inbox regardless
+  // (parsed vs. ai_suggested), so nothing here is silently hidden.
+  const sourceResults = (aiSuggested && aiSuggested.results && aiSuggested.results.length) ? aiSuggested.results : (parsed.results || []);
+
   const testMapRows = db.prepare('SELECT * FROM analyzer_test_map WHERE analyzer_key = ?').all(row.analyzer_key);
   const mapByCode = new Map(testMapRows.map(m => [m.source_code.trim().toLowerCase(), m]));
 
-  const prefill = (parsed.results || []).map(r => {
+  const prefill = sourceResults.map(r => {
     const mapping = mapByCode.get(String(r.source_code || '').trim().toLowerCase());
     return {
       source_code: r.source_code,

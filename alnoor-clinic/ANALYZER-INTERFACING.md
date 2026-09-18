@@ -130,6 +130,35 @@ correctly. Unmapped codes still show up in the Inbox and can still be
 imported — the technician just has to type that one value in manually,
 same as before this phase existed, until it's mapped.
 
+## Optional: AI-assisted re-parse ("Ask Claude to Re-Parse")
+
+Because none of these three analyzers' output formats is actually
+documented (see the calibration table above), the automatic best-effort
+tokenizer sometimes splits a line badly — a value ends up in the wrong
+column, or a test name comes through mangled. For exactly that situation,
+every Analyzer Inbox entry that isn't yet imported has an **Ask Claude to
+Re-Parse** button.
+
+Clicking it sends that one entry's raw captured text to the Claude API and
+asks it to suggest a cleaner breakdown into test/value/unit/reference
+range — nothing more. The suggestion appears right below the original raw
+guess in the Inbox, clearly labeled "Claude suggested," purely as another
+input for the technician to weigh. It changes **none** of the safety rules
+above: the suggestion still only pre-fills the ordinary result-entry
+screen after Import, still requires Save Results to actually record
+anything, and the pathologist verification gate is completely unaffected.
+If a suggestion exists for an entry, Import uses it instead of the raw
+guess (since the technician asked for it specifically because the raw
+guess looked wrong) — the raw guess stays visible in the Inbox regardless,
+so nothing is hidden.
+
+**This is the only outbound internet connection anywhere in this phase**,
+and it only happens when a technician deliberately clicks the button —
+never automatically when a message arrives. A hospital that never sets
+`ANTHROPIC_API_KEY` (see `ecosystem.config.js`) sees the button, but
+clicking it just returns a clear "not configured" message; everything else
+in this document works identically either way.
+
 ## Matching a result to the right order
 
 Every message is matched automatically by **specimen ID** — the

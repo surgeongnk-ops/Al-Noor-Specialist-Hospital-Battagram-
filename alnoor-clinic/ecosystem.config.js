@@ -46,7 +46,15 @@ module.exports = {
 
       env: {
         NODE_ENV: 'production',
-        PORT: 3000
+        PORT: 3000,
+        // Optional: only needed for the Analyzer Inbox's "Ask Claude to
+        // Re-Parse" button (analyzers/claudeFallback.js). Leave unset and
+        // everything else — including automatic analyzer capture — works
+        // exactly as before; that button just returns a clear error until
+        // this is set. Requires the internet on whatever machine runs this
+        // process, unlike the rest of this offline-by-default system.
+        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+        ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || 'claude-sonnet-5'
       },
 
       // Logs — kept locally, no external log shipping (offline deployment).

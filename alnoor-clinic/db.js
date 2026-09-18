@@ -974,6 +974,13 @@ const MIGRATIONS = [
       const insertInteraction = db.prepare('INSERT INTO drug_interactions (drug_a, drug_b, severity, note) VALUES (?, ?, ?, ?)');
       for (const [a, b, severity, note] of seedInteractions) insertInteraction.run(a, b, severity, note);
     }
+  },
+  {
+    version: 19,
+    description: 'Analyzer Inbox: add ai_suggested_json, an optional Claude-generated re-parse of a message\'s raw_payload that a lab technician can request on demand (see analyzers/claudeFallback.js) when serialBridge.js\'s best-effort tokenizer makes a poor guess at undocumented Swelab/Microlab serial output. Purely additive and never automatic — nothing calls the Claude API unless a technician clicks "Ask Claude to Re-Parse" in the Analyzer Inbox (routes/analyzers.routes.js\'s /ai-suggest endpoint), and the result still only pre-fills the review screen. The existing safety model (analyzers/inbox.js: nothing an analyzer sends is ever written directly into a saved result) is completely unchanged.',
+    up() {
+      ensureColumn('analyzer_result_inbox', 'ai_suggested_json', 'TEXT');
+    }
   }
 ];
 
