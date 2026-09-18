@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Reception — Al Noor Clinic</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="topbar no-print">
+  <h1>Reception</h1>
+  <div><span class="who" data-who></span> &nbsp; <button onclick="logout()">Log out</button></div>
+</div>
+<div class="wrap">
+
+  <div class="card no-print">
+    <h2>Register New Patient</h2>
+    <form id="regForm">
+      <div class="row">
+        <div><label>Full Name *</label><input id="r_name" required></div>
+        <div><label>Age</label><input id="r_age"></div>
+        <div><label>Gender</label>
+          <select id="r_gender"><option value="">--</option><option>Male</option><option>Female</option><option>Other</option></select>
+        </div>
+      </div>
+      <div class="row">
+        <div><label>Phone</label><input id="r_phone"></div>
+        <div><label>Room / Ward</label><input id="r_room" placeholder="e.g. OPD-2"></div>
+      </div>
+      <label>Address</label><input id="r_address">
+      <label>Known Drug Allergies (if any)</label><input id="r_allergies" placeholder="e.g. Penicillin, Sulfa drugs — leave blank if none known">
+      <label>Reason for visit</label><textarea id="r_reason" placeholder="e.g. Fever and abdominal pain"></textarea>
+      <label>Consultation fee collected (Rs., optional)</label><input id="r_fee" type="number" placeholder="0">
+      <button class="primary" type="submit">Register & Start Visit</button>
+      <div id="regErr" class="error"></div>
+    </form>
+    <div id="regResult"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Returning Patient — Start New Visit</h2>
+    <div class="row">
+      <input id="searchQ" placeholder="Search by MR number, name or phone">
+      <button class="secondary" onclick="doSearch()">Search</button>
+    </div>
+    <div id="searchResults" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card no-print">
+    <p class="muted"><a href="/billing.html">Need a consolidated master receipt across departments? →</a></p>
+  </div>
+
+</div>
+<script src="/js/app.js"></script>
+<script>
+requireRole(['reception','admin']);
+
+document.getElementById('regForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const err = document.getElementById('regErr');
+  err.textContent = '';
+  try {
+    const patient = await api('/api/patients', { method: 'POST', body: JSON.stringify({
+      name: r_name.value, age: r_age.value, gender: r_gender.value, phone: r_phone.value,
+      address: r_address.value, reason: r_reason.value, room: r_room.value, consultation_fee: r_fee.value,
+      allergies: r_allergies.value
+    })});
+    document.getElementById('regResult').innerHTML = `
+      <div class="receipt">
+        <strong>Registered.</strong> MR Number: <strong>${esc(patient.mr_number)}</strong><br>
+        ${esc(patient.name)} — ${esc(patient.age||'')} ${esc(patient.gender||'')}<br>
+        ${patient.consultation_receipt_no ? `Consultation fee receipt: <strong>${esc(patient.consultation_receipt_no)}</strong> — Rs. ${patient.consultation_fee}<br>` : ''}
+        <button class="secondary no-print" onclick='printRegistrationReceipt(${JSON.stringify(patient)})'>Print Receipt</button>
+      </div>`;
+    document.getElementById('regForm').reset();
+  } catch (ex) { err.textContent = ex.message; }
+});
+
+function printRegistrationReceipt(patient) {
+  const meta = [
+    { label: 'Patient', value: patient.name },
+    { label: 'MR Number', value: patient.mr_number },
+    { label: 'Age / Gender', value: `${patient.age||'—'} / ${patient.gender||'—'}` },
+    { label: 'Date & Time', value: new Date().toLocaleString() }
+  ];
+  const items = patient.consultation_receipt_no
+    ? [{ label: 'Consultation Fee', amount: patient.consultation_fee }]
+    : [{ label: 'Registration (no consultation fee collected)', amount: 0 }];
+  const html = buildReceiptHTML({
+    title: 'REGISTRATION RECEIPT',
+    receiptNo: patient.consultation_receipt_no || '—',
+    meta, items,
+    total: patient.consultation_fee || 0
+  });
+  printDocument(html, 'thermal');
+}
+
+async function doSearch() {
+  const q = document.getElementById('searchQ').value.trim();
+  const results = await api('/api/patients/search?q=' + encodeURIComponent(q));
+  const el = document.getElementById('searchResults');
+  if (!results.length) { el.innerHTML = '<p class="muted">No matches.</p>'; return; }
+  el.innerHTML = '<table><tr><th>MR#</th><th>Name</th><th>Phone</th><th></th></tr>' +
+    results.map(p => `<tr><td>${esc(p.mr_number)}</td><td>${esc(p.name)}</td><td>${esc(p.phone)}</td>
+      <td><button class="secondary" onclick="startVisit('${esc(p.mr_number)}', '${esc(p.name)}')">Start Visit</button></td></tr>`).join('') + '</table>';
+}
+
+async function startVisit(mr, name) {
+  const reason = prompt('Reason for this visit?') || '';
+  const room = prompt('Room / Ward?') || '';
+  const fee = prompt('Consultation fee collected (Rs.)? Leave blank if none.') || '';
+  try {
+    const out = await api('/api/visits/new-visit', { method: 'POST', body: JSON.stringify({ mr_number: mr, reason, room, consultation_fee: fee }) });
+    if (out.consultation_receipt_no) {
+      const html = buildReceiptHTML({
+        title: 'REGISTRATION RECEIPT',
+        receiptNo: out.consultation_receipt_no,
+        meta: [{ label: 'Patient', value: name }, { label: 'MR Number', value: mr }, { label: 'Date & Time', value: new Date().toLocaleString() }],
+        items: [{ label: 'Consultation Fee', amount: Number(fee) || 0 }],
+        total: Number(fee) || 0
+      });
+      printDocument(html, 'thermal');
+    } else {
+      toast('Visit started for ' + mr + '. Patient added to doctor queue.', 'success');
+    }
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+</script>
+</body>
+</html>

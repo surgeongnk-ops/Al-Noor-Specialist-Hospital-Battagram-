@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Laboratory — Al Noor Clinic</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="topbar no-print">
+  <h1>Laboratory</h1>
+  <div><span class="who" data-who></span> &nbsp; <button onclick="logout()">Log out</button></div>
+</div>
+<div class="wrap">
+
+  <div class="card no-print">
+    <h2>Direct Walk-In / Counter Test</h2>
+    <div class="row no-print" style="margin-bottom:10px;">
+      <button class="secondary" id="tabRegisteredBtn" onclick="switchWiTab('registered')">Registered OPD/IPD Patient (MRN)</button>
+      <button class="secondary" id="tabUnregisteredBtn" onclick="switchWiTab('unregistered')">Direct Walk-In Patient (No MRN)</button>
+    </div>
+
+    <div id="tabRegistered">
+      <p class="muted">For a patient who already has a registered MR number, just without a doctor referral for this test.</p>
+      <div class="row">
+        <input id="wiMr" placeholder="MR number (e.g. P-00001)">
+      </div>
+      <label>Search tests</label>
+      <div style="position:relative;"><input id="wiTestSearch" placeholder="e.g. CBC, Blood Sugar..."></div>
+      <div id="wiChips" style="margin:8px 0;"></div>
+      <button class="primary" onclick="submitWalkIn()">Create Walk-In Order</button>
+      <div id="wiMsg"></div>
+    </div>
+
+    <div id="tabUnregistered" style="display:none;">
+      <p class="muted">For a patient with no registration at all — no MR number needed. A temporary ID is generated automatically and clearly marked on every receipt and report.</p>
+      <div class="row">
+        <input id="uwName" placeholder="Patient name *">
+        <input id="uwAge" placeholder="Age">
+        <select id="uwGender"><option value="">Gender</option><option>Male</option><option>Female</option></select>
+        <input id="uwPhone" placeholder="Contact #">
+      </div>
+      <label>Search tests</label>
+      <div style="position:relative;"><input id="uwTestSearch" placeholder="e.g. CBC, Blood Sugar..."></div>
+      <div id="uwChips" style="margin:8px 0;"></div>
+      <button class="primary" onclick="submitUnregisteredWalkIn()">Create Walk-In Order</button>
+      <div id="uwMsg"></div>
+    </div>
+  </div>
+
+  <div class="card no-print">
+    <h2>1. New Orders — Awaiting Payment</h2>
+    <p class="muted">Nothing happens for these until payment is collected — no sample can be taken, no test can start. An itemized receipt prints the instant payment clears.</p>
+    <div id="q_PENDING_PAYMENT"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>2. Paid — Awaiting Sample Collection</h2>
+    <p class="muted">Payment is on file. Print the specimen barcode label and collect the sample — scanning the label confirms it against the right order before it reaches the bench.</p>
+    <div id="q_PAID"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>3. Sample Collected — Awaiting Processing</h2>
+    <div id="q_SAMPLE_COLLECTED"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>4. In Process — Awaiting Results Entry</h2>
+    <div id="q_IN_PROCESS"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print" id="analyzerInboxCard">
+    <h2>Analyzer Inbox — Incoming Instrument Results</h2>
+    <p class="muted">Every result an analyzer sends lands here first — nothing is ever saved to a patient's report automatically. Match it to the right order if needed, then Import to pull the values into the normal result-entry screen for review before saving.</p>
+    <div class="row" style="max-width:420px;">
+      <select id="inboxFilter" onchange="loadAnalyzerInbox()">
+        <option value="">Needs attention (unmatched + matched)</option>
+        <option value="unmatched">Unmatched only</option>
+        <option value="matched">Matched, not yet imported</option>
+        <option value="imported">Already imported</option>
+        <option value="discarded">Discarded</option>
+      </select>
+      <button class="secondary" onclick="loadAnalyzerInbox()">Refresh</button>
+    </div>
+    <div id="analyzerInboxList" style="margin-top:10px;"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>5. Results Entered — Awaiting Pathologist Verification</h2>
+    <p class="muted">A report cannot be printed or handed to a patient until a pathologist signs off here.</p>
+    <div id="q_RESULT_ENTERED"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>6. Verified — Ready to Print & Deliver</h2>
+    <div id="q_VERIFIED"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Completed Orders — Search & Re-Print</h2>
+    <p class="muted">Every delivered order stays here permanently. Reopen any of them to print the Payment Receipt or the Lab Report again — nothing is ever cleared.</p>
+    <div class="row">
+      <input id="cSearch" placeholder="Search by patient name or MR / Walk-In ID">
+      <input id="cDate" type="date">
+      <button class="secondary" onclick="searchCompleted()">Search</button>
+    </div>
+    <div id="completedResults" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card no-print" id="dailyReportCard">
+    <h2>Laboratory Daily Report</h2>
+    <p class="muted">Tests completed and revenue collected for a given day, viewable directly here — no admin login needed.</p>
+    <div class="row" style="max-width:300px;">
+      <input id="labReportDate" type="date">
+      <button class="secondary" onclick="loadLabDailyReport()">Load</button>
+    </div>
+    <div id="labDailyReport" style="margin-top:14px;"></div>
+  </div>
+
+  <div id="resultCard" class="card" style="display:none;"></div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+let testDefs = {};
+let currentPatient = null;
+let selectedWalkinTests = [];
+let selectedUwTests = [];
+let myRole = null;
+
+(async () => {
+  const me = await requireRole(['lab','admin','phlebotomist','pathologist']);
+  myRole = me?.role || null;
+  const all = await api('/api/tests');
+  all.forEach(t => testDefs[t.name] = t);
+  loadAllQueues();
+  searchCompleted();
+  // Financial reporting stays lab/admin-only — a phlebotomist or pathologist
+  // logging in sees the specimen/results queues relevant to their own role,
+  // not the revenue report (which would otherwise just show a permission
+  // error in that card).
+  if (myRole === 'lab' || myRole === 'admin') {
+    document.getElementById('labReportDate').value = new Date().toISOString().slice(0, 10);
+    loadLabDailyReport();
+  } else {
+    document.getElementById('dailyReportCard').style.display = 'none';
+  }
+  // The Analyzer Inbox is a lab/pathologist/admin tool (matches the backend's
+  // own RBAC on /api/analyzers/*) — a phlebotomist only collects specimens
+  // and has no reason to triage incoming instrument messages.
+  if (myRole === 'lab' || myRole === 'pathologist' || myRole === 'admin') {
+    loadAnalyzerInbox();
+  } else {
+    document.getElementById('analyzerInboxCard').style.display = 'none';
+  }
+  attachAutocomplete(document.getElementById('wiTestSearch'),
+    q => api('/api/tests/search?q=' + encodeURIComponent(q)),
+    item => { if (!selectedWalkinTests.find(t => t.name === item.name)) selectedWalkinTests.push(item); renderWiChips(); document.getElementById('wiTestSearch').value = ''; },
+    item => `${item.name} (${item.category})`);
+  attachAutocomplete(document.getElementById('uwTestSearch'),
+    q => api('/api/tests/search?q=' + encodeURIComponent(q)),
+    item => { if (!selectedUwTests.find(t => t.name === item.name)) selectedUwTests.push(item); renderUwChips(); document.getElementById('uwTestSearch').value = ''; },
+    item => `${item.name} (${item.category})`);
+  switchWiTab('registered');
+})();
+
+function switchWiTab(tab) {
+  document.getElementById('tabRegistered').style.display = tab === 'registered' ? 'block' : 'none';
+  document.getElementById('tabUnregistered').style.display = tab === 'unregistered' ? 'block' : 'none';
+  document.getElementById('tabRegisteredBtn').className = tab === 'registered' ? 'primary' : 'secondary';
+  document.getElementById('tabUnregisteredBtn').className = tab === 'unregistered' ? 'primary' : 'secondary';
+}
+
+function renderWiChips() {
+  document.getElementById('wiChips').innerHTML = selectedWalkinTests.map((t, i) =>
+    `<span class="badge wait" style="margin:2px;">${esc(t.name)} <a href="javascript:void(0)" onclick="removeWiTest(${i})" style="color:inherit;">✕</a></span>`).join('') || '<span class="muted">No tests selected yet.</span>';
+}
+function removeWiTest(i) { selectedWalkinTests.splice(i, 1); renderWiChips(); }
+
+function renderUwChips() {
+  document.getElementById('uwChips').innerHTML = selectedUwTests.map((t, i) =>
+    `<span class="badge wait" style="margin:2px;">${esc(t.name)} <a href="javascript:void(0)" onclick="removeUwTest(${i})" style="color:inherit;">✕</a></span>`).join('') || '<span class="muted">No tests selected yet.</span>';
+}
+function removeUwTest(i) { selectedUwTests.splice(i, 1); renderUwChips(); }
+
+async function submitUnregisteredWalkIn() {
+  const name = document.getElementById('uwName').value.trim();
+  if (!name) { toast('Enter the patient name.', 'error'); return; }
+  if (!selectedUwTests.length) { toast('Select at least one test.', 'error'); return; }
+  try {
+    const out = await api('/api/lab/walk-in-unregistered', { method: 'POST', body: JSON.stringify({
+      name, age: document.getElementById('uwAge').value, gender: document.getElementById('uwGender').value,
+      phone: document.getElementById('uwPhone').value, tests: selectedUwTests.map(t => t.name)
+    })});
+    document.getElementById('uwMsg').innerHTML = `<p class="success">Walk-in order created for <strong>${esc(out.patient_name)}</strong> — temporary ID <strong>${esc(out.mr_number)}</strong>. Rs. ${out.payment_amount} due before sample collection.</p>`;
+    ['uwName','uwAge','uwPhone'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('uwGender').value = '';
+    selectedUwTests = []; renderUwChips();
+    loadQueue('PENDING_PAYMENT');
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function submitWalkIn() {
+  const mr_number = document.getElementById('wiMr').value.trim();
+  if (!mr_number) { toast('Enter the patient MR number.', 'error'); return; }
+  if (!selectedWalkinTests.length) { toast('Select at least one test.', 'error'); return; }
+  try {
+    const out = await api('/api/lab/walk-in', { method: 'POST', body: JSON.stringify({ mr_number, tests: selectedWalkinTests.map(t => t.name) }) });
+    document.getElementById('wiMsg').innerHTML = `<p class="success">Walk-in order created for ${esc(out.patient_name)} (${esc(out.mr_number)}) — Rs. ${out.payment_amount} due before sample collection.</p>`;
+    document.getElementById('wiMr').value = '';
+    selectedWalkinTests = []; renderWiChips();
+    loadQueue('PENDING_PAYMENT');
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+// ===== The 6-stage payment-gated pipeline =====
+// One generic loader + row renderer per status, so every stage shares exactly
+// the same columns and only the action buttons differ. Statuses are fetched
+// in parallel; each queue reloads independently after its own action.
+const QUEUES = ['PENDING_PAYMENT', 'PAID', 'SAMPLE_COLLECTED', 'IN_PROCESS', 'RESULT_ENTERED', 'VERIFIED'];
+
+function loadAllQueues() { QUEUES.forEach(loadQueue); }
+
+async function loadQueue(status) {
+  const el = document.getElementById('q_' + status);
+  const rows = await api('/api/lab/orders?status=' + status);
+  if (!rows.length) { el.innerHTML = `<p class="muted">Nothing here.</p>`; return; }
+  el.innerHTML = '<table><tr><th>MR#</th><th>Patient</th><th>Tests</th><th>Source / Amount</th><th></th></tr>' +
+    rows.map(o => `<tr>
+      <td>${esc(o.mr_number)}${o.patient_type==='WALK_IN' ? ' <span class="badge wait">Walk-In</span>' : ''}</td>
+      <td>${esc(o.patient_name)}</td><td>${o.tests.map(esc).join(', ')}</td>
+      <td>${o.order_source === 'walkin' ? '<span class="badge wait">Walk-in</span>' : '<span class="badge done">Doctor</span>'} Rs. ${o.locked_total}${o.specimen_id ? `<br><span class="muted">Specimen: ${esc(o.specimen_id)}</span>` : ''}</td>
+      <td>${queueRowActions(o, status)}</td>
+    </tr>`).join('') + '</table>';
+}
+
+function patientOf(o) { return { mr_number: o.mr_number, name: o.patient_name, age: o.age, gender: o.gender }; }
+
+function queueRowActions(o, status) {
+  const p = JSON.stringify(patientOf(o));
+  switch (status) {
+    case 'PENDING_PAYMENT':
+      return `<button class="primary" onclick='collectPayment(${o.id}, ${p}, ${JSON.stringify(o.tests)}, ${JSON.stringify(o.order_source)})'>Collect Payment</button>
+        <button class="secondary" onclick='editOrderTests(${o.id}, ${JSON.stringify(o.tests)})'>Edit Tests</button>
+        <button class="secondary" onclick="cancelOrder(${o.id})">Cancel</button>`;
+    case 'PAID':
+      return `<button class="secondary" onclick='printSpecimenLabel(${p}, ${JSON.stringify(o.specimen_id)}, ${JSON.stringify(o.tests)})'>Print Specimen Label</button>
+        <button class="primary" onclick='collectSample(${o.id}, ${JSON.stringify(o.specimen_id)})'>Collect Sample</button>`;
+    case 'SAMPLE_COLLECTED':
+      return `<button class="primary" onclick="startProcessing(${o.id})">Start Processing</button>`;
+    case 'IN_PROCESS':
+      return `<button class="primary" onclick='openOrder(${o.id}, ${JSON.stringify(o.tests)}, ${p}, ${o.locked_total})'>Enter Results</button>`;
+    case 'RESULT_ENTERED':
+      return myRole === 'pathologist' || myRole === 'admin'
+        ? `<button class="primary" onclick="verifyOrder(${o.id})">Verify</button>`
+        : `<span class="muted">Awaiting pathologist sign-off</span>`;
+    case 'VERIFIED':
+      return `<button class="secondary" onclick='printAndOpen(${o.id}, ${p}, ${JSON.stringify(o.results)}, ${JSON.stringify(o.tests)}, ${JSON.stringify(o.order_source)}, ${JSON.stringify(o.receipt_no)}, ${JSON.stringify(o.specimen_id)}, ${JSON.stringify(o.ordered_by)}, ${JSON.stringify(o.entered_by)}, ${JSON.stringify(o.verified_by)}, ${o.payment_amount})'>Open (Print & Deliver)</button>`;
+    default:
+      return '';
+  }
+}
+
+// ===== Analyzer Inbox — incoming instrument results (Phase 2) =====
+// Every message an interfaced analyzer sends lands in analyzer_result_inbox
+// first (see analyzers/inbox.js on the server) — nothing here is ever
+// written into a patient's saved result directly. "Import" only pre-fills
+// the ordinary result-entry form below (openOrder/submitResults); the
+// technician still has to review it and click Save, exactly as if they'd
+// typed it in by hand, and the pathologist verification gate is unchanged.
+async function loadAnalyzerInbox() {
+  const el = document.getElementById('analyzerInboxList');
+  const filter = document.getElementById('inboxFilter').value;
+  let rows;
+  try {
+    rows = await api('/api/analyzers/inbox' + (filter ? '?status=' + filter : ''));
+  } catch (ex) { el.innerHTML = `<p class="error">${esc(ex.message)}</p>`; return; }
+  if (!filter) rows = rows.filter(r => r.match_status === 'unmatched' || r.match_status === 'matched');
+  if (!rows.length) { el.innerHTML = '<p class="muted">Nothing here.</p>'; return; }
+
+  const ANALYZER_NAMES = { swelab_alfa: 'Swelab Alfa Plus', microlab_300: 'Microlab 300', ichroma_ii: 'i-Chroma II' };
+  el.innerHTML = '<table><tr><th>Received</th><th>Analyzer</th><th>Specimen</th><th>Matched Order</th><th>Results (raw)</th><th>Status</th><th></th></tr>' +
+    rows.map(r => {
+      const resultsPreview = (r.parsed.results || []).map(x => `${esc(x.source_name || x.source_code)}: ${esc(x.value)}${x.unit ? ' ' + esc(x.unit) : ''}`).join('<br>');
+      const orderInfo = r.order ? `${esc(r.order.patient_name)} (${esc(r.order.mr_number)})<br><span class="muted">${esc(r.order.status)}</span>` : '<span class="muted">—</span>';
+      let actions = '';
+      if (r.match_status === 'unmatched') {
+        actions = `<button class="secondary" onclick="matchInboxEntry(${r.id})">Match to Order</button>
+          <button class="secondary" onclick="discardInboxEntry(${r.id})">Discard</button>`;
+      } else if (r.match_status === 'matched') {
+        actions = `<button class="primary" onclick="importInboxEntry(${r.id})">Import to Result Entry</button>
+          <button class="secondary" onclick="matchInboxEntry(${r.id})">Re-match</button>
+          <button class="secondary" onclick="discardInboxEntry(${r.id})">Discard</button>`;
+      } else if (r.match_status === 'imported') {
+        actions = `<span class="badge done">Imported${r.imported_by ? ' by ' + esc(r.imported_by) : ''}</span>`;
+      } else {
+        actions = `<span class="muted">Discarded${r.notes ? ': ' + esc(r.notes) : ''}</span>`;
+      }
+      return `<tr>
+        <td class="muted">${esc(r.received_at)}</td>
+        <td>${esc(ANALYZER_NAMES[r.analyzer_key] || r.analyzer_key)}</td>
+        <td>${esc(r.specimen_id_guess || '—')}</td>
+        <td>${orderInfo}</td>
+        <td style="font-size:12px;">${resultsPreview || '<span class="muted">(no results parsed)</span>'}</td>
+        <td>${esc(r.match_status)}</td>
+        <td>${actions}</td>
+      </tr>`;
+    }).join('') + '</table>';
+}
+
+async function matchInboxEntry(inboxId) {
+  const specimen = prompt('Enter the specimen ID printed on the tube/label for this result (e.g. SPEC-20260909-00001):');
+  if (!specimen) return;
+  try {
+    const found = await api('/api/analyzers/resolve-specimen?specimen_id=' + encodeURIComponent(specimen));
+    await api(`/api/analyzers/inbox/${inboxId}/match`, { method: 'POST', body: JSON.stringify({ order_id: found.order_id }) });
+    toast(`Matched to ${found.patient_name} (${found.mr_number}).`, 'success');
+    loadAnalyzerInbox();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function discardInboxEntry(inboxId) {
+  if (!confirm('Discard this incoming analyzer message? It will no longer appear as needing attention.')) return;
+  const notes = prompt('Optional note (e.g. "QC run", "duplicate transmission"):') || '';
+  try {
+    await api(`/api/analyzers/inbox/${inboxId}/discard`, { method: 'POST', body: JSON.stringify({ notes }) });
+    loadAnalyzerInbox();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+// Imports the analyzer's values into the SAME result-entry form a
+// technician would otherwise type into by hand. Only fields the admin has
+// already mapped (Admin -> Analyzer Settings -> Test Code Mapping) get
+// pre-filled automatically; anything unmapped is listed so the technician
+// knows to enter it manually and, ideally, add the mapping for next time.
+async function importInboxEntry(inboxId) {
+  let result;
+  try {
+    result = await api(`/api/analyzers/inbox/${inboxId}/import`, { method: 'POST' });
+  } catch (ex) { toast(ex.message, 'error'); return; }
+
+  const orders = await api('/api/lab/orders?id=' + result.order_id);
+  const order = orders[0];
+  if (!order) { toast('That order could not be found anymore.', 'error'); return; }
+  if (order.status !== 'IN_PROCESS') {
+    toast(`This order is at "${order.status}", not "In Process" — open it from the matching queue once it reaches In Process, then use Import again to pre-fill it.`, 'error');
+    return;
+  }
+
+  await openOrder(order.id, order.tests, patientOf(order), order.locked_total);
+
+  let filled = 0;
+  const unmapped = [];
+  for (const item of result.prefill) {
+    if (!item.mapped) { unmapped.push(item.source_name || item.source_code); continue; }
+    const input = item.mapped_component
+      ? document.querySelector(`.resVal[data-panel="${cssEsc(item.mapped_test)}"][data-comp="${cssEsc(item.mapped_component)}"]`)
+      : document.querySelector(`.resVal[data-single="${cssEsc(item.mapped_test)}"]`);
+    if (!input) { unmapped.push(`${item.mapped_test}${item.mapped_component ? ' / ' + item.mapped_component : ''} (not part of this order)`); continue; }
+    input.value = item.value;
+    input.dispatchEvent(new Event(input.tagName === 'SELECT' ? 'change' : 'input'));
+    filled++;
+  }
+
+  document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth' });
+  if (unmapped.length) {
+    toast(`Pre-filled ${filled} value(s) from the analyzer. Not mapped yet, enter manually: ${unmapped.join(', ')}`, 'error');
+  } else {
+    toast(`Pre-filled ${filled} value(s) from the analyzer — review before saving.`, 'success');
+  }
+  loadAnalyzerInbox();
+}
+
+// Minimal CSS.escape polyfill-free helper for building an attribute-value
+// selector safely (test/component names can contain parentheses, slashes,
+// etc. — e.g. "CBC (Complete Blood Count)").
+function cssEsc(s) { return String(s).replace(/["\\]/g, '\\$&'); }
+
+// Partial test refusal — remove individual tests from a still-unpaid order.
+// The bill recalculates automatically from whatever tests remain.
+async function editOrderTests(orderId, currentTests) {
+  const remaining = [...currentTests];
+  let choice;
+  do {
+    choice = prompt(`Current tests:\n${remaining.map((t,i) => `${i+1}. ${t}`).join('\n')}\n\nEnter a number to remove that test, or leave blank to save & close.`);
+    if (choice && !isNaN(Number(choice))) {
+      const idx = Number(choice) - 1;
+      if (idx >= 0 && idx < remaining.length) remaining.splice(idx, 1);
+    }
+  } while (choice);
+  if (!remaining.length) { toast('At least one test must remain — use Cancel to remove the whole order instead.', 'error'); return; }
+  try {
+    await api(`/api/lab/orders/${orderId}`, { method: 'PUT', body: JSON.stringify({ tests: remaining }) });
+    toast('Order updated — bill recalculated.', 'success');
+    loadQueue('PENDING_PAYMENT');
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function cancelOrder(orderId) {
+  if (!confirm('Cancel this entire order? The patient has not paid, so nothing is billed.')) return;
+  try {
+    await api(`/api/lab/orders/${orderId}/cancel`, { method: 'POST' });
+    toast('Order cancelled.', 'success');
+    loadQueue('PENDING_PAYMENT');
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+// ---- Step 1: collect payment. Receipt + specimen barcode are both minted the
+// instant this succeeds — the patient gets the itemized receipt immediately,
+// and the tube label can be printed right away for the next stage. ----
+async function collectPayment(orderId, patient, tests, orderSource) {
+  try {
+    const out = await api(`/api/lab/orders/${orderId}/collect-payment`, { method: 'POST' });
+    currentPatient = patient;
+    document.getElementById('resultCard').style.display = 'block';
+    document.getElementById('resultCard').innerHTML = `
+      <div class="receipt">
+        <strong>Payment collected. Receipt: ${esc(out.receipt_no)}</strong> — Rs. ${out.payment_amount}<br>
+        <span class="muted">Specimen ID: ${esc(out.specimen_id)}</span><br>
+        <button class="secondary no-print" onclick='printLabReceipt(${JSON.stringify(out)}, ${JSON.stringify(orderSource)})'>Print Payment Receipt</button>
+        <button class="secondary no-print" onclick='printSpecimenLabel(${JSON.stringify(patient)}, ${JSON.stringify(out.specimen_id)}, ${JSON.stringify(tests)})'>Print Specimen Label</button>
+        <button class="secondary no-print" onclick="document.getElementById('resultCard').style.display='none'">Close</button>
+      </div>`;
+    loadQueue('PENDING_PAYMENT');
+    loadQueue('PAID');
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+function printSpecimenLabel(patient, specimenId, tests) {
+  printDocument(buildSpecimenLabelHTML({ patient, specimenId, tests }), 'label');
+}
+
+// ---- Step 2: collect specimen. An optional scanned/typed specimen ID confirms
+// the tube in hand matches this exact order before it's accepted. ----
+async function collectSample(orderId, expectedSpecimenId) {
+  const scanned = prompt(`Scan or type the specimen label ID to confirm (expected ${expectedSpecimenId}), or leave blank to skip scanning:`);
+  try {
+    await api(`/api/lab/orders/${orderId}/collect-sample`, { method: 'POST', body: JSON.stringify({ specimen_id: scanned || undefined }) });
+    toast('Sample collected.', 'success');
+    loadQueue('PAID');
+    loadQueue('SAMPLE_COLLECTED');
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function startProcessing(orderId) {
+  try {
+    await api(`/api/lab/orders/${orderId}/start-processing`, { method: 'POST' });
+    toast('Marked as in-process.', 'success');
+    loadQueue('SAMPLE_COLLECTED');
+    loadQueue('IN_PROCESS');
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function verifyOrder(orderId) {
+  if (!confirm('Verify these results? This is the pathologist sign-off — once verified, the report can be printed and delivered.')) return;
+  try {
+    await api(`/api/lab/orders/${orderId}/verify`, { method: 'POST' });
+    toast('Results verified.', 'success');
+    loadQueue('RESULT_ENTERED');
+    loadQueue('VERIFIED');
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function markDelivered(orderId) {
+  try {
+    await api(`/api/lab/orders/${orderId}/deliver`, { method: 'POST' });
+    toast('Marked delivered.', 'success');
+    loadQueue('VERIFIED');
+    searchCompleted();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+// ---- Step 6: from the Verified queue — group results back into per-test pages,
+// print the report and/or receipt, then mark delivered once handed over. ----
+function printAndOpen(orderId, patient, results, tests, orderSource, receiptNo, specimenId, orderedBy, enteredBy, verifiedBy, paymentAmount) {
+  currentPatient = patient;
+  const testGroups = buildTestGroupsFromResults(results, tests);
+  document.getElementById('resultCard').style.display = 'block';
+  document.getElementById('resultCard').innerHTML = `
+    <div class="receipt">
+      <strong>${esc(patient.name)} (${esc(patient.mr_number)})</strong> — Receipt: ${esc(receiptNo)} — Rs. ${paymentAmount}<br>
+      <span class="muted">Tests: ${tests.map(esc).join(', ')}</span><br>
+      <button class="secondary no-print" onclick='printLabReport(${JSON.stringify(testGroups)}, ${JSON.stringify(orderSource)}, ${JSON.stringify(receiptNo)}, ${JSON.stringify(specimenId)}, ${JSON.stringify(orderedBy)}, ${JSON.stringify(enteredBy)}, ${JSON.stringify(verifiedBy)})'>Print Lab Report (one page per test)</button>
+      <button class="secondary no-print" onclick='printLabReceipt(${JSON.stringify({receipt_no: receiptNo, payment_amount: paymentAmount})}, ${JSON.stringify(orderSource)})'>Print Payment Receipt</button>
+      <button class="primary no-print" onclick="markDelivered(${orderId})">Mark Delivered (report handed to patient)</button>
+      <button class="secondary no-print" onclick="document.getElementById('resultCard').style.display='none'">Close</button>
+    </div>`;
+  window.scrollTo({ top: document.getElementById('resultCard').offsetTop - 80, behavior: 'smooth' });
+}
+
+// Groups the flat saved results back by parent test — a panel's components
+// (e.g. CBC's dozen sub-values) stay together, and a standalone test becomes
+// its own single-row group — so each group becomes exactly one printed page.
+function buildTestGroupsFromResults(results, tests) {
+  return (results || []).map(r => {
+    if (r.components) {
+      return { testName: r.test, rows: r.components.map(c => ({ param: c.name, value: c.value, unit: c.unit, range: c.normal_range, flag: c.flag })) };
+    }
+    return { testName: r.test, rows: [{ param: r.test, value: r.value, unit: r.unit, range: r.normal_range, flag: r.flag }] };
+  });
+}
+
+// ---- Completed orders: search & re-print (fix for orders "disappearing" after Done) ----
+async function searchCompleted() {
+  const q = document.getElementById('cSearch').value.trim();
+  const date = document.getElementById('cDate').value;
+  const el = document.getElementById('completedResults');
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (date) params.set('date', date);
+  const rows = await api('/api/lab/orders/completed?' + params.toString());
+  if (!rows.length) { el.innerHTML = '<p class="muted">No completed orders match.</p>'; return; }
+  el.innerHTML = '<table><tr><th>MR# / Walk-In ID</th><th>Patient</th><th>Tests</th><th>Receipt#</th><th>Amount</th><th>Paid</th><th></th></tr>' +
+    rows.map(o => `<tr>
+      <td>${esc(o.mr_number)}${o.patient_type==='WALK_IN' ? ' <span class="badge wait">Walk-In</span>' : ''}</td>
+      <td>${esc(o.patient_name)}</td><td>${o.tests.map(esc).join(', ')}</td>
+      <td>${esc(o.receipt_no)}</td><td>Rs. ${o.payment_amount}</td><td class="muted">${esc(o.paid_at)}</td>
+      <td><button class="secondary" onclick='reopenCompletedOrder(${JSON.stringify(o)})'>Open / Reprint</button></td>
+    </tr>`).join('') + '</table>';
+}
+
+function reopenCompletedOrder(o) {
+  currentPatient = { mr_number: o.mr_number, name: o.patient_name, age: o.age, gender: o.gender };
+  const testGroups = buildTestGroupsFromResults(o.results, o.tests);
+  const out = { receipt_no: o.receipt_no, payment_amount: o.payment_amount };
+  document.getElementById('resultCard').style.display = 'block';
+  document.getElementById('resultCard').innerHTML = `
+    <div class="receipt">
+      <strong>${esc(o.patient_name)} (${esc(o.mr_number)})</strong> — Receipt: ${esc(o.receipt_no)} — Rs. ${o.payment_amount}<br>
+      <span class="muted">Tests: ${o.tests.map(esc).join(', ')} — paid ${esc(o.paid_at)}</span><br>
+      <button class="secondary no-print" onclick='printLabReport(${JSON.stringify(testGroups)}, ${JSON.stringify(o.order_source)}, ${JSON.stringify(o.receipt_no)}, ${JSON.stringify(o.specimen_id)}, ${JSON.stringify(o.ordered_by)}, ${JSON.stringify(o.entered_by)}, ${JSON.stringify(o.verified_by)})'>Print Lab Report (one page per test)</button>
+      <button class="secondary no-print" onclick='printLabReceipt(${JSON.stringify(out)}, ${JSON.stringify(o.order_source)})'>Print Payment Receipt</button>
+      <button class="secondary no-print" onclick="document.getElementById('resultCard').style.display='none'">Close</button>
+    </div>`;
+  window.scrollTo({ top: document.getElementById('resultCard').offsetTop - 80, behavior: 'smooth' });
+}
+
+// A value is flagged HIGH/LOW just outside the reference range, and escalated
+// to CRITICAL (panic value) once it's more than half the range-width beyond
+// either boundary — a standard heuristic used when a test has no explicit
+// critical-range configured. Per-test critical thresholds can be added later
+// without changing any call site of this function.
+function flag(value, low, high) {
+  const v = Number(value);
+  if (isNaN(v) || low == null || high == null) return '';
+  const width = high - low;
+  if (width > 0) {
+    if (v < low - width * 0.5 || v > high + width * 0.5) return 'critical';
+  }
+  if (v < low) return 'low';
+  if (v > high) return 'high';
+  return 'normal';
+}
+
+function refRangeText(def) {
+  if (!def) return '';
+  if (def.ref_text) return def.ref_text;
+  if (def.ref_low != null && def.ref_high != null) return `${def.ref_low} - ${def.ref_high} ${def.unit || ''}`;
+  return '';
+}
+
+async function openOrder(orderId, tests, patient, lockedTotal) {
+  currentPatient = patient;
+  const card = document.getElementById('resultCard');
+  card.style.display = 'block';
+  card.innerHTML = '<p class="muted">Loading reference ranges…</p>';
+
+  // Resolve age/sex-stratified reference ranges server-side (e.g. FSH pre/post-
+  // menopausal, pediatric vs adult TSH) before rendering the entry form, so the
+  // ranges shown and later saved reflect THIS patient, not just the catalog
+  // default. Falls back to the plain catalog definition if the lookup fails —
+  // never blocks result entry over a reference-range service hiccup.
+  let resolved = {};
+  try {
+    resolved = await api('/api/reference-ranges/resolve', {
+      method: 'POST',
+      body: JSON.stringify({ tests, age: patient.age, gender: patient.gender })
+    });
+  } catch (ex) { /* fall back to unstratified testDefs below */ }
+
+  let rowsHtml = '';
+  tests.forEach(testName => {
+    const def = testDefs[testName];
+    const res = resolved[testName];
+    if (def && def.components) {
+      rowsHtml += `<tr><td colspan="4" style="background:#f4f6f8; font-weight:700;">${esc(testName)}</td></tr>`;
+      def.components.forEach((c) => {
+        const rc = (res && res.components && res.components[c.name]) || c;
+        // Panel components come in two flavors: numeric (has ref_low/ref_high — e.g.
+        // CBC's Hemoglobin) and qualitative (has ref_text only — e.g. Urine R/E's
+        // Protein: Negative/Trace/1+/2+/3+). Qualitative ones get a dropdown seeded
+        // with the normal value plus the common alternatives, so entry is a click,
+        // not free-typed text that can't be flag-checked.
+        const isQualitative = rc.ref_low == null && rc.ref_high == null;
+        const rangeLabel = (isQualitative ? esc(rc.ref_text || '') : `${esc(rc.ref_low ?? '')}–${esc(rc.ref_high ?? '')} ${esc(rc.unit||'')}`)
+          + (rc.label ? ` <span class="muted">(${esc(rc.label)})</span>` : '');
+        const inputHtml = isQualitative
+          ? `<select class="resVal" data-panel="${esc(testName)}" data-comp="${esc(c.name)}" data-unit="" data-text="${esc(rc.ref_text||'')}" data-qualitative="1" onchange="updateFlag(this)">
+               ${qualitativeOptions(rc.ref_text)}
+             </select>`
+          : `<input class="resVal" data-panel="${esc(testName)}" data-comp="${esc(c.name)}" data-unit="${esc(rc.unit||'')}"
+              data-low="${rc.ref_low ?? ''}" data-high="${rc.ref_high ?? ''}" oninput="updateFlag(this)">`;
+        rowsHtml += `<tr>
+          <td>${esc(c.name)}</td>
+          <td>${inputHtml}</td>
+          <td class="muted">${rangeLabel}</td>
+          <td class="flagCell"></td>
+        </tr>`;
+      });
+    } else {
+      const rd = res || def;
+      // Standalone (non-panel) tests can be qualitative too (H. pylori Ag/Ab,
+      // Toxoplasma IgG/IgM, Brucella, Malaria, Typhidot — reported Positive/
+      // Negative/Reactive rather than a number), same as a qualitative panel
+      // component: no ref_low/ref_high means render a normal-seeded dropdown
+      // instead of a free numeric field.
+      const isQualitative = rd?.ref_low == null && rd?.ref_high == null;
+      const rangeLabel = (isQualitative ? esc(rd?.ref_text || '') : esc(refRangeText(rd)))
+        + (rd?.label ? ` <span class="muted">(${esc(rd.label)})</span>` : '');
+      const inputHtml = isQualitative
+        ? `<select class="resVal" data-single="${esc(testName)}" data-unit="" data-text="${esc(rd?.ref_text||'')}" data-qualitative="1" onchange="updateFlag(this)">
+             ${qualitativeOptions(rd?.ref_text)}
+           </select>`
+        : `<input class="resVal" data-single="${esc(testName)}" data-unit="${esc(rd?.unit||'')}"
+            data-low="${rd?.ref_low ?? ''}" data-high="${rd?.ref_high ?? ''}" oninput="updateFlag(this)">`;
+      rowsHtml += `<tr>
+        <td>${esc(testName)}</td>
+        <td>${inputHtml}</td>
+        <td class="muted">${rangeLabel}</td>
+        <td class="flagCell"></td>
+      </tr>`;
+    }
+  });
+
+  card.innerHTML = `<h2 class="no-print">${esc(patient.name)} (${esc(patient.mr_number)}) — Enter Results</h2>
+    <table>
+      <tr><th>Test / Parameter</th><th>Result</th><th>Reference Range</th><th>Flag</th></tr>
+      ${rowsHtml}
+    </table>
+    <p class="no-print"><strong>Locked fee (from test master, cannot be changed here): Rs. ${lockedTotal}</strong></p>
+    <button class="primary no-print" onclick="submitResults(${orderId})">Save Results (awaiting pathologist verification next)</button>
+    <div id="resMsg"></div>`;
+
+  // Initialize flag badges for qualitative dropdowns (numeric inputs start blank
+  // until typed into, but a <select> already has a value the moment it renders).
+  card.querySelectorAll('.resVal[data-qualitative]').forEach(updateFlag);
+}
+
+// Curated option sets for qualitative (non-numeric) panel components, keyed by
+// the test's normal/reference value — covers Urine R/E's Protein/Glucose/etc.
+// (Negative-based), Colour, Appearance, and cell-count style fields (Nil/Few/...).
+// Anything not recognized still gets a usable two-option dropdown rather than
+// blocking entry, so a hospital's own future qualitative tests aren't stuck.
+function qualitativeOptions(normal) {
+  const n = (normal || '').trim();
+  const lists = {
+    // 'Negative' covers two different real-world result styles that both
+    // happen to share the same normal/reference value: semi-quantitative
+    // urine dipstick items (Protein, Glucose, etc. — Trace/1+.../4+) AND
+    // binary infectious-serology tests (H. pylori, Toxoplasma, Brucella,
+    // Malaria ICT, Typhidot — Positive/Negative only). Both option sets are
+    // offered together so either kind of test can actually be recorded —
+    // before this fix, a genuinely positive serology result had no
+    // selectable option at all.
+    'Negative': ['Negative', 'Positive', 'Trace', '1+', '2+', '3+', '4+'],
+    'Nil': ['Nil', 'Occasional', 'Few', 'Moderate', 'Many'],
+    'Nil / Occasional': ['Nil', 'Occasional', 'Few', 'Moderate', 'Many'],
+    'Clear': ['Clear', 'Slightly Hazy', 'Hazy', 'Turbid', 'Cloudy'],
+    'Pale Yellow': ['Pale Yellow', 'Yellow', 'Dark Yellow', 'Amber', 'Straw', 'Red', 'Brown'],
+    'Normal': ['Normal', 'Increased', 'Decreased'],
+    'Few': ['Few', 'Occasional', 'Moderate', 'Many'],
+  };
+  const options = lists[n] || [n, 'Abnormal (see notes)'];
+  return options.map(o => `<option value="${esc(o)}" ${o === n ? 'selected' : ''}>${esc(o)}</option>`).join('');
+}
+
+function updateFlag(input) {
+  const cell = input.closest('tr').querySelector('.flagCell');
+  let f;
+  if (input.dataset.qualitative) {
+    const normal = (input.dataset.text || '').trim();
+    f = !input.value ? '' : (input.value.trim() === normal ? 'normal' : 'abnormal');
+  } else {
+    const low = input.dataset.low === '' ? null : Number(input.dataset.low);
+    const high = input.dataset.high === '' ? null : Number(input.dataset.high);
+    f = flag(input.value, low, high);
+  }
+  cell.innerHTML = f ? `<span class="result-flag ${f}">${f.toUpperCase()}</span>` : '';
+  updateCriticalBanner();
+}
+
+// On-screen critical-value alerting (per hospital policy: on-screen highlighting
+// + printed-report flagging only — no SMS/WhatsApp/email in this phase). A red
+// banner appears the instant any entered value crosses into CRITICAL, and stays
+// visible for as long as one does, so it's impossible to miss while still typing.
+function updateCriticalBanner() {
+  const card = document.getElementById('resultCard');
+  const anyCritical = !!card.querySelector('.result-flag.critical');
+  let banner = document.getElementById('criticalBanner');
+  if (anyCritical && !banner) {
+    banner = document.createElement('div');
+    banner.id = 'criticalBanner';
+    banner.className = 'critical-value-banner no-print';
+    banner.textContent = '⚠ CRITICAL VALUE ENTERED — verify and flag for immediate clinical attention before saving.';
+    card.insertBefore(banner, card.firstChild.nextSibling);
+  } else if (!anyCritical && banner) {
+    banner.remove();
+  }
+}
+
+async function submitResults(orderId) {
+  const inputs = [...document.querySelectorAll('.resVal')];
+  const panels = {};
+  const singles = [];
+  for (const inp of inputs) {
+    if (inp.dataset.qualitative) {
+      const normal = (inp.dataset.text || '').trim();
+      const f = !inp.value ? '' : (inp.value.trim() === normal ? 'normal' : 'abnormal');
+      if (inp.dataset.panel) {
+        panels[inp.dataset.panel] = panels[inp.dataset.panel] || [];
+        panels[inp.dataset.panel].push({ name: inp.dataset.comp, value: inp.value, unit: '', normal_range: inp.dataset.text || '', flag: f });
+      } else {
+        singles.push({ test: inp.dataset.single, value: inp.value, unit: '', normal_range: inp.dataset.text || '', flag: f });
+      }
+      continue;
+    }
+    const low = inp.dataset.low === '' ? null : Number(inp.dataset.low);
+    const high = inp.dataset.high === '' ? null : Number(inp.dataset.high);
+    const f = flag(inp.value, low, high);
+    // normal_range is built from the input's own data-low/data-high — those were
+    // set from the age/sex-RESOLVED range at openOrder() time, not the plain
+    // catalog default, so a stratified band (e.g. a post-menopausal FSH range)
+    // is exactly what gets baked into the saved, immutable result row.
+    if (inp.dataset.panel) {
+      panels[inp.dataset.panel] = panels[inp.dataset.panel] || [];
+      panels[inp.dataset.panel].push({ name: inp.dataset.comp, value: inp.value, unit: inp.dataset.unit, normal_range: `${low ?? ''}-${high ?? ''} ${inp.dataset.unit||''}`.trim(), flag: f });
+    } else {
+      singles.push({ test: inp.dataset.single, value: inp.value, unit: inp.dataset.unit, normal_range: `${low ?? ''}-${high ?? ''} ${inp.dataset.unit||''}`.trim(), flag: f });
+    }
+  }
+  const results = [
+    ...singles,
+    ...Object.entries(panels).map(([testName, components]) => ({ test: testName, components }))
+  ];
+  // Forced acknowledgment for critical/panic values (on-screen + printed-report
+  // flagging is the hospital's chosen policy for this phase — no messaging
+  // integration). A native confirm() blocks the save until the tech explicitly
+  // acknowledges every critical value by name.
+  const criticalNames = [...singles, ...Object.values(panels).flat()]
+    .filter(r => r.flag === 'critical')
+    .map(r => r.name || r.test);
+  if (criticalNames.length) {
+    const ok = confirm(`CRITICAL VALUE(S) DETECTED:\n${criticalNames.join(', ')}\n\nConfirm you have reviewed these and will flag them for immediate clinical attention.`);
+    if (!ok) return;
+  }
+  try {
+    const out = await api(`/api/lab/orders/${orderId}/results`, { method: 'POST', body: JSON.stringify({ results }) });
+    document.getElementById('resMsg').innerHTML = `<p class="success">Results saved. Now awaiting pathologist verification before the report can be printed.</p>`;
+    loadQueue('IN_PROCESS');
+    loadQueue('RESULT_ENTERED');
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+// Diagnostic report — one A4 page per test, deliberately its own print job,
+// never merged with the receipt. `testGroups`: [{testName, rows}].
+function printLabReport(testGroups, orderSource, receiptNo, specimenId, orderedBy, enteredBy, verifiedBy) {
+  printDocument(buildLabReportPagesHTML({
+    patient: currentPatient, testGroups, orderSource, receiptNo, specimenId, orderedBy, enteredBy, verifiedBy
+  }), 'a4');
+}
+
+// ---- Laboratory Daily Report — available directly to Lab staff, not just Admin ----
+let lastLabDailyReport = null;
+
+async function loadLabDailyReport() {
+  const date = document.getElementById('labReportDate').value;
+  if (!date) { toast('Pick a date first.', 'error'); return; }
+  const el = document.getElementById('labDailyReport');
+  el.innerHTML = '<p class="muted">Loading…</p>';
+  try {
+    const lab = await api('/api/reports/lab-daily?date=' + date);
+    lastLabDailyReport = lab;
+    el.innerHTML = `
+      <p>Total tests conducted: <strong>${lab.totalTests}</strong> &nbsp; Total revenue: <strong>Rs. ${lab.totalRevenue.toLocaleString()}</strong></p>
+      ${lab.rows.length ? `<table><tr><th>Patient</th><th>MR# / Walk-In ID</th><th>Test(s)</th><th>Fee</th><th>Entered By</th></tr>
+        ${lab.rows.map(r => `<tr><td>${esc(r.patient_name)}</td><td>${esc(r.mr_number)}${r.patient_type === 'WALK_IN' ? ' <span class="badge wait">Walk-In</span>' : ''}</td><td>${esc(r.tests)}</td><td>Rs. ${r.payment_amount}</td><td>${esc(r.entered_by)}</td></tr>`).join('')}
+      </table>` : '<p class="muted">No tests completed this date.</p>'}
+      <button class="secondary no-print" style="margin-top:14px;" onclick="printLabDailyReport()">Print Daily Report</button>
+    `;
+  } catch (ex) {
+    el.innerHTML = `<p class="error">Could not load the report: ${esc(ex.message)}</p>`;
+    toast(ex.message, 'error');
+  }
+}
+
+function printLabDailyReport() {
+  if (!lastLabDailyReport) return;
+  const lab = lastLabDailyReport;
+  const html = buildReceiptHTML({
+    title: 'LABORATORY DAILY REPORT',
+    meta: [{ label: 'Date', value: lab.date }, { label: 'Total Tests', value: lab.totalTests }],
+    items: lab.rows.map(r => ({ label: `${r.patient_name} (${r.mr_number}) — ${r.tests}`, amount: r.payment_amount })),
+    total: lab.totalRevenue,
+    footerNote: 'Laboratory closing summary'
+  });
+  printDocument(html, 'thermal');
+}
+
+function printLabReceipt(out, orderSource) {
+  const html = buildReceiptHTML({
+    title: 'LABORATORY RECEIPT',
+    receiptNo: out.receipt_no,
+    meta: [
+      { label: 'Patient', value: currentPatient.name },
+      { label: 'MR Number', value: currentPatient.mr_number },
+      { label: 'Date & Time', value: new Date().toLocaleString() }
+    ],
+    items: [{ label: 'Laboratory Tests', amount: out.payment_amount }],
+    total: out.payment_amount,
+    footerNote: orderSource === 'walkin' ? 'DIRECT WALK-IN TEST' : null
+  });
+  printDocument(html, 'thermal');
+}
+</script>
+</body>
+</html>

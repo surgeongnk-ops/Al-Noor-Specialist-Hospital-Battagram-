@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Discharge Certificate — Al Noor Clinic</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="topbar no-print">
+  <h1>Discharge Certificate</h1>
+  <div><span class="who" data-who></span> &nbsp; <button onclick="logout()">Log out</button></div>
+</div>
+<div class="wrap">
+
+  <div class="card no-print">
+    <p class="muted">This reprints the doctor's discharge summary as a formal certificate. It doesn't create new clinical content — that's written once, by the doctor, at the time of discharge (Doctor → Inpatients, or Nursing → Discharge Patient).</p>
+    <div class="row">
+      <input id="mrInput" placeholder="Patient MR number">
+      <button class="secondary" onclick="load()">Look Up</button>
+    </div>
+  </div>
+
+  <div id="result"></div>
+
+</div>
+<script src="/js/app.js"></script>
+<script>
+(async () => {
+  await requireRole(['doctor','nurse','admin']);
+  const params = new URLSearchParams(location.search);
+  if (params.get('mr')) { document.getElementById('mrInput').value = params.get('mr'); load(); }
+})();
+
+async function load() {
+  const mr = document.getElementById('mrInput').value.trim();
+  if (!mr) return;
+  const el = document.getElementById('result');
+  try {
+    const { patient, admissions } = await api('/api/certificates/discharge?mr=' + encodeURIComponent(mr));
+    if (!admissions.length) { el.innerHTML = '<div class="card"><p class="muted">No completed discharges on record for this patient.</p></div>'; return; }
+    el.innerHTML = admissions.map(a => `
+      <div class="card">
+        <h2>${esc(patient.name)} (${esc(patient.mr_number)}) — Discharged ${esc(a.discharged_at)}</h2>
+        <p class="muted">${esc(a.ward)} ${a.room ? '/ ' + esc(a.room) : ''} · Admitting doctor: ${esc(a.admitting_doctor)}</p>
+        <p><strong>Diagnosis:</strong> ${esc(a.diagnosis_summary || '—')}</p>
+        <p><strong>Condition at discharge:</strong> ${esc(a.condition_at_discharge || '—')}</p>
+        <button class="secondary no-print" onclick='printDischargeCertificate(${JSON.stringify(patient)}, ${JSON.stringify(a)})'>Print Discharge Certificate</button>
+      </div>`).join('');
+  } catch (ex) {
+    el.innerHTML = `<div class="card error">${esc(ex.message)}</div>`;
+  }
+}
+
+// Same shared branding header/footer as every other official document.
+function printDischargeCertificate(patient, a) {
+  const html = `
+    ${receiptHeaderHTML('DISCHARGE CERTIFICATE')}
+    <div class="doc-meta">
+      <p><strong>Patient:</strong> ${esc(patient.name)}</p>
+      <p><strong>Age / Gender:</strong> ${esc(patient.age || '—')} / ${esc(patient.gender || '—')}</p>
+      <p><strong>MR Number:</strong> ${esc(patient.mr_number)}</p>
+      <p><strong>Ward / Room:</strong> ${esc(a.ward)} ${a.room ? '/ ' + esc(a.room) : ''}</p>
+      <p><strong>Admitted:</strong> ${esc(a.created_at)} &nbsp;&nbsp; <strong>Discharged:</strong> ${esc(a.discharged_at)}</p>
+      <p><strong>Admitting Doctor:</strong> ${esc(a.admitting_doctor)}</p>
+    </div>
+    <table class="doc-table">
+      <tr><th style="width:30%;">Diagnosis Summary</th><td>${esc(a.diagnosis_summary || '—')}</td></tr>
+      <tr><th>Condition at Discharge</th><td>${esc(a.condition_at_discharge || '—')}</td></tr>
+      <tr><th>Discharge Instructions</th><td>${esc(a.discharge_instructions || '—')}</td></tr>
+      <tr><th>Follow-up Plan</th><td>${esc(a.follow_up || '—')}</td></tr>
+    </table>
+    ${certificateFooterHTML(a.doctor_id ? `Dr. ${esc(a.doctor_id)} — Attending Physician` : 'Attending Physician / Authorized Medical Officer')}
+  `;
+  printDocument(html, 'a4');
+}
+</script>
+</body>
+</html>

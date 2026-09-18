@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Verify Report — Al Noor Clinic</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="topbar no-print">
+  <h1>Lab Report Verification</h1>
+  <div><span class="who" data-who></span> &nbsp; <button onclick="logout()">Log out</button></div>
+</div>
+<div class="wrap" style="max-width:520px;">
+  <div class="card">
+    <p class="muted">This page confirms a printed laboratory report's receipt number, specimen ID, and test genuinely match an on-file order — scanned from the QR code on the report itself. Works entirely on this hospital's own network.</p>
+    <div id="result"><p class="muted">Checking…</p></div>
+  </div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+(async () => {
+  await requireRole(null);
+  const params = new URLSearchParams(window.location.search);
+  const receipt = params.get('receipt') || '';
+  const specimen = params.get('specimen') || '';
+  const test = params.get('test') || '';
+  const el = document.getElementById('result');
+  if (!receipt) { el.innerHTML = '<p class="error">No receipt number in this link.</p>'; return; }
+  try {
+    const q = new URLSearchParams({ receipt, specimen, test });
+    const out = await api('/api/lab/verify?' + q.toString());
+    if (!out.valid) {
+      el.innerHTML = `<div style="text-align:center;"><p style="font-size:40px;">✗</p><p class="error"><strong>NOT VERIFIED</strong></p><p class="muted">${esc(out.reason || '')}</p></div>`;
+      return;
+    }
+    el.innerHTML = `
+      <div style="text-align:center; margin-bottom:14px;">
+        <p style="font-size:40px; color:var(--teal);">✓</p>
+        <p class="success"><strong>VERIFIED — Genuine Al Noor Specialist Hospital Report</strong></p>
+      </div>
+      <table>
+        <tr><td class="muted">Patient</td><td>${esc(out.patient_name)}</td></tr>
+        <tr><td class="muted">MR Number</td><td>${esc(out.mr_number)}</td></tr>
+        <tr><td class="muted">Tests</td><td>${out.tests.map(esc).join(', ')}</td></tr>
+        <tr><td class="muted">Receipt #</td><td>${esc(out.receipt_no)}</td></tr>
+        <tr><td class="muted">Specimen ID</td><td>${esc(out.specimen_id || '—')}</td></tr>
+        <tr><td class="muted">Status</td><td><span class="badge ${out.status === 'DELIVERED' ? 'done' : 'wait'}">${esc(out.status)}</span></td></tr>
+        <tr><td class="muted">Results Entered By</td><td>${esc(out.entered_by || '—')}</td></tr>
+        <tr><td class="muted">Verified By</td><td>${esc(out.verified_by || '—')} ${out.verified_at ? `(${esc(out.verified_at)})` : ''}</td></tr>
+        <tr><td class="muted">Delivered By</td><td>${esc(out.delivered_by || '—')} ${out.delivered_at ? `(${esc(out.delivered_at)})` : ''}</td></tr>
+      </table>
+    `;
+  } catch (ex) {
+    el.innerHTML = `<p class="error">Could not verify: ${esc(ex.message)}</p>`;
+  }
+})();
+</script>
+</body>
+</html>

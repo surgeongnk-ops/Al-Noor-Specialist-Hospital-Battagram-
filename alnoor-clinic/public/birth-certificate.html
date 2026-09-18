@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Birth Certificate — Al Noor Clinic</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="topbar no-print">
+  <h1>Birth Certificate</h1>
+  <div><span class="who" data-who></span> &nbsp; <button onclick="logout()">Log out</button></div>
+</div>
+<div class="wrap">
+
+  <div class="card no-print">
+    <h2>Issue New Birth Certificate</h2>
+    <div class="row">
+      <div><label>Mother's MR Number (optional, links record)</label><input id="bc_mr" placeholder="P-00001"></div>
+    </div>
+    <div class="row">
+      <div><label>Baby's Name *</label><input id="bc_name"></div>
+      <div><label>Gender *</label>
+        <select id="bc_gender"><option value="Male">Male</option><option value="Female">Female</option></select>
+      </div>
+    </div>
+    <div class="row">
+      <div><label>Date of Birth *</label><input id="bc_dob" type="date"></div>
+      <div><label>Time of Birth</label><input id="bc_tob" type="time"></div>
+      <div><label>Birth Weight (optional)</label><input id="bc_weight" placeholder="e.g. 3.2 kg"></div>
+    </div>
+    <div class="row">
+      <div><label>Father's Name</label><input id="bc_father"></div>
+      <div><label>Mother's Name</label><input id="bc_mother"></div>
+    </div>
+    <label>Attending Doctor</label><input id="bc_doctor">
+    <button class="primary" onclick="issue()">Issue Certificate</button>
+    <div id="issueMsg"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Recently Issued</h2>
+    <div id="recentList"><p class="muted">Loading…</p></div>
+  </div>
+
+</div>
+<script src="/js/app.js"></script>
+<script>
+(async () => { await requireRole(['doctor','nurse','admin']); loadRecent(); })();
+
+async function issue() {
+  const msg = document.getElementById('issueMsg');
+  msg.className = ''; msg.textContent = '';
+  const body = {
+    mr_number: document.getElementById('bc_mr').value.trim(),
+    baby_name: document.getElementById('bc_name').value.trim(),
+    gender: document.getElementById('bc_gender').value,
+    date_of_birth: document.getElementById('bc_dob').value,
+    time_of_birth: document.getElementById('bc_tob').value,
+    weight: document.getElementById('bc_weight').value,
+    father_name: document.getElementById('bc_father').value,
+    mother_name: document.getElementById('bc_mother').value,
+    attending_doctor: document.getElementById('bc_doctor').value
+  };
+  try {
+    const cert = await api('/api/certificates/birth', { method: 'POST', body: JSON.stringify(body) });
+    msg.className = 'success';
+    msg.innerHTML = `Certificate <strong>${esc(cert.certificate_no)}</strong> issued.
+      <button class="secondary" onclick='printBirthCertificate(${JSON.stringify(cert)})'>Print Certificate</button>`;
+    ['bc_mr','bc_name','bc_dob','bc_tob','bc_weight','bc_father','bc_mother','bc_doctor'].forEach(id => document.getElementById(id).value = '');
+    loadRecent();
+  } catch (ex) { msg.className = 'error'; msg.textContent = ex.message; }
+}
+
+async function loadRecent() {
+  const rows = await api('/api/certificates/birth');
+  const el = document.getElementById('recentList');
+  if (!rows.length) { el.innerHTML = '<p class="muted">None issued yet.</p>'; return; }
+  el.innerHTML = '<table><tr><th>Certificate #</th><th>Baby Name</th><th>Gender</th><th>DOB</th><th>Issued</th><th></th></tr>' +
+    rows.map(c => `<tr><td>${esc(c.certificate_no)}</td><td>${esc(c.baby_name)}</td><td>${esc(c.gender)}</td><td>${esc(c.date_of_birth)}</td><td class="muted">${esc(c.created_at)}</td>
+      <td><button class="secondary" onclick='printBirthCertificate(${JSON.stringify(c)})'>Print</button></td></tr>`).join('') + '</table>';
+}
+
+// Formal A4 certificate layout — uses the same shared branding header/footer as
+// every other official document (Lab Report, Discharge Certificate, Death
+// Certificate) so the letterhead is identical no matter which one prints.
+function printBirthCertificate(cert) {
+  const html = `
+    ${receiptHeaderHTML('CERTIFICATE OF BIRTH')}
+    <p style="text-align:center; margin-bottom: 24px;">Certificate No: <strong>${esc(cert.certificate_no)}</strong></p>
+    <p style="line-height:2;">
+      This is to certify that a <strong>${esc(cert.gender)}</strong> child named
+      <strong>${esc(cert.baby_name)}</strong> was born on
+      <strong>${esc(cert.date_of_birth)}</strong>${cert.time_of_birth ? ` at <strong>${esc(cert.time_of_birth)}</strong>` : ''}
+      at ${esc(HOSPITAL.name)}, ${esc(HOSPITAL.address)}.
+    </p>
+    <table class="doc-table" style="margin-top:24px;">
+      <tr><th style="width:35%;">Father's Name</th><td>${esc(cert.father_name || '—')}</td></tr>
+      <tr><th>Mother's Name</th><td>${esc(cert.mother_name || '—')}</td></tr>
+      <tr><th>Mother's MR Number</th><td>${esc(cert.mr_number || '—')}</td></tr>
+      <tr><th>Birth Weight</th><td>${esc(cert.weight || '—')}</td></tr>
+      <tr><th>Attending Doctor</th><td>${esc(cert.attending_doctor || '—')}</td></tr>
+    </table>
+    ${certificateFooterHTML('Attending Physician / Authorized Medical Officer')}
+  `;
+  printDocument(html, 'a4');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Death Certificate — Al Noor Clinic</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="topbar no-print">
+  <h1>Death Certificate</h1>
+  <div><span class="who" data-who></span> &nbsp; <button onclick="logout()">Log out</button></div>
+</div>
+<div class="wrap">
+
+  <div class="card no-print">
+    <h2>Issue New Death Certificate</h2>
+    <div class="row">
+      <div><label>Patient's MR Number (optional, links record)</label><input id="dc_mr" placeholder="P-00001"></div>
+    </div>
+    <div class="row">
+      <div><label>Deceased's Name *</label><input id="dc_name"></div>
+      <div><label>Age</label><input id="dc_age"></div>
+      <div><label>Gender</label>
+        <select id="dc_gender"><option value="">--</option><option>Male</option><option>Female</option></select>
+      </div>
+    </div>
+    <div class="row">
+      <div><label>Date of Death *</label><input id="dc_dod" type="date"></div>
+      <div><label>Time of Death</label><input id="dc_tod" type="time"></div>
+      <div><label>Place of Death</label><input id="dc_place" placeholder="e.g. ICU, Ward 3"></div>
+    </div>
+    <label>Cause of Death</label><input id="dc_cause">
+    <div class="row">
+      <div><label>Attending Doctor</label><input id="dc_doctor"></div>
+      <div><label>Next of Kin</label><input id="dc_kin" placeholder="Name & relation"></div>
+    </div>
+    <button class="primary" onclick="issue()">Issue Certificate</button>
+    <div id="issueMsg"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Recently Issued</h2>
+    <div id="recentList"><p class="muted">Loading…</p></div>
+  </div>
+
+</div>
+<script src="/js/app.js"></script>
+<script>
+(async () => { await requireRole(['doctor','admin']); loadRecent(); })();
+
+async function issue() {
+  const msg = document.getElementById('issueMsg');
+  msg.className = ''; msg.textContent = '';
+  const body = {
+    mr_number: document.getElementById('dc_mr').value.trim(),
+    deceased_name: document.getElementById('dc_name').value.trim(),
+    age: document.getElementById('dc_age').value,
+    gender: document.getElementById('dc_gender').value,
+    date_of_death: document.getElementById('dc_dod').value,
+    time_of_death: document.getElementById('dc_tod').value,
+    place_of_death: document.getElementById('dc_place').value,
+    cause_of_death: document.getElementById('dc_cause').value,
+    attending_doctor: document.getElementById('dc_doctor').value,
+    next_of_kin: document.getElementById('dc_kin').value
+  };
+  try {
+    const cert = await api('/api/certificates/death', { method: 'POST', body: JSON.stringify(body) });
+    msg.className = 'success';
+    msg.innerHTML = `Certificate <strong>${esc(cert.certificate_no)}</strong> issued.
+      <button class="secondary" onclick='printDeathCertificate(${JSON.stringify(cert)})'>Print Certificate</button>`;
+    ['dc_mr','dc_name','dc_age','dc_dod','dc_tod','dc_place','dc_cause','dc_doctor','dc_kin'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('dc_gender').value = '';
+    loadRecent();
+  } catch (ex) { msg.className = 'error'; msg.textContent = ex.message; }
+}
+
+async function loadRecent() {
+  const rows = await api('/api/certificates/death');
+  const el = document.getElementById('recentList');
+  if (!rows.length) { el.innerHTML = '<p class="muted">None issued yet.</p>'; return; }
+  el.innerHTML = '<table><tr><th>Certificate #</th><th>Name</th><th>Date of Death</th><th>Issued</th><th></th></tr>' +
+    rows.map(c => `<tr><td>${esc(c.certificate_no)}</td><td>${esc(c.deceased_name)}</td><td>${esc(c.date_of_death)}</td><td class="muted">${esc(c.created_at)}</td>
+      <td><button class="secondary" onclick='printDeathCertificate(${JSON.stringify(c)})'>Print</button></td></tr>`).join('') + '</table>';
+}
+
+// Same shared branding header/footer as every other official document.
+function printDeathCertificate(cert) {
+  const html = `
+    ${receiptHeaderHTML('CERTIFICATE OF DEATH')}
+    <p style="text-align:center; margin-bottom: 24px;">Certificate No: <strong>${esc(cert.certificate_no)}</strong></p>
+    <p style="line-height:2;">
+      This is to certify that <strong>${esc(cert.deceased_name)}</strong>${cert.age ? `, aged ${esc(cert.age)}` : ''}${cert.gender ? ` (${esc(cert.gender)})` : ''},
+      passed away on <strong>${esc(cert.date_of_death)}</strong>${cert.time_of_death ? ` at <strong>${esc(cert.time_of_death)}</strong>` : ''}
+      ${cert.place_of_death ? `at ${esc(cert.place_of_death)}, ` : 'at '}${esc(HOSPITAL.name)}, ${esc(HOSPITAL.address)}.
+    </p>
+    <table class="doc-table" style="margin-top:24px;">
+      <tr><th style="width:35%;">Cause of Death</th><td>${esc(cert.cause_of_death || '—')}</td></tr>
+      <tr><th>MR Number</th><td>${esc(cert.mr_number || '—')}</td></tr>
+      <tr><th>Attending Doctor</th><td>${esc(cert.attending_doctor || '—')}</td></tr>
+      <tr><th>Next of Kin</th><td>${esc(cert.next_of_kin || '—')}</td></tr>
+    </table>
+    ${certificateFooterHTML('Attending Physician / Authorized Medical Officer')}
+  `;
+  printDocument(html, 'a4');
+}
+</script>
+</body>
+</html>

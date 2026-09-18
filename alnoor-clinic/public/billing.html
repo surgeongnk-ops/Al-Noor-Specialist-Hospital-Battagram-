@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Billing — Al Noor Clinic</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="topbar no-print">
+  <h1>Billing — Master Receipt</h1>
+  <div><span class="who" data-who></span> &nbsp; <button onclick="logout()">Log out</button></div>
+</div>
+<div class="wrap">
+  <div class="card no-print">
+    <p class="muted">Each department (consultation, lab, radiology, pharmacy, procedures) already prints its own individual receipt at the point of service. Use this page only when the patient wants one consolidated invoice covering everything.</p>
+    <div class="row">
+      <input id="mrInput" placeholder="Enter MR number">
+      <button class="secondary" onclick="load()">Load</button>
+    </div>
+  </div>
+  <div id="result"></div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+(async () => {
+  await requireRole(['reception','admin']);
+  const params = new URLSearchParams(location.search);
+  if (params.get('mr')) { document.getElementById('mrInput').value = params.get('mr'); load(); }
+})();
+
+async function load() {
+  const mr = document.getElementById('mrInput').value.trim();
+  if (!mr) return;
+  const el = document.getElementById('result');
+  try {
+    const data = await api('/api/billing/' + encodeURIComponent(mr) + '/master-receipt');
+    const { patient, lines, grandTotal } = data;
+    el.innerHTML = `
+      <div class="card">
+        <h2>Master Receipt — ${esc(patient.name)} (${esc(patient.mr_number)})</h2>
+        <p class="muted">${esc(patient.age||'')} ${esc(patient.gender||'')} · ${esc(patient.phone||'')}</p>
+        ${lines.length ? `<table><tr><th>Category</th><th>Receipt #</th><th>Date</th><th>Amount</th></tr>
+          ${lines.map(l => `<tr><td>${esc(l.category)}</td><td>${esc(l.receipt_no||'—')}</td><td>${esc(l.date||'—')}</td><td>Rs. ${(l.amount||0).toLocaleString()}</td></tr>`).join('')}
+        </table>
+        <p style="text-align:right; font-weight:700; font-size:17px; margin-top:10px;">Grand Total: Rs. ${grandTotal.toLocaleString()}</p>
+        <button class="secondary no-print" onclick='printMasterReceipt(${JSON.stringify(data)})'>Print Master Receipt</button>` :
+        '<p class="muted">No paid charges on record for this patient yet.</p>'}
+      </div>`;
+  } catch (ex) {
+    el.innerHTML = `<div class="card error">${esc(ex.message)}</div>`;
+  }
+}
+
+function printMasterReceipt({ patient, lines, grandTotal }) {
+  const html = buildReceiptHTML({
+    title: 'MASTER RECEIPT (ALL DEPARTMENTS)',
+    meta: [
+      { label: 'Patient', value: patient.name },
+      { label: 'MR Number', value: patient.mr_number },
+      { label: 'Date & Time', value: new Date().toLocaleString() }
+    ],
+    items: lines.map(l => ({ label: `${l.category} (${l.receipt_no || '—'})`, amount: l.amount || 0 })),
+    total: grandTotal
+  });
+  printDocument(html, 'thermal');
+}
+</script>
+</body>
+</html>

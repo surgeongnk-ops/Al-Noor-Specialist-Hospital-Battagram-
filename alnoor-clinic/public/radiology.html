@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Radiology — Al Noor Clinic</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="topbar no-print">
+  <h1>Radiology</h1>
+  <div><span class="who" data-who></span> &nbsp; <button onclick="logout()">Log out</button></div>
+</div>
+<div class="wrap">
+
+  <div class="card no-print">
+    <h2>Direct Walk-In / Counter Study</h2>
+    <p class="muted">For a patient approaching radiology directly, with a registered MR number but no doctor referral.</p>
+    <div class="row">
+      <input id="wiMr" placeholder="MR number (e.g. P-00001)">
+    </div>
+    <label>Search studies</label>
+    <div style="position:relative;"><input id="wiTestSearch" placeholder="e.g. X-Ray, Ultrasound..."></div>
+    <div id="wiChips" style="margin:8px 0;"></div>
+    <button class="primary" onclick="submitWalkIn()">Create Walk-In Order</button>
+    <div id="wiMsg"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Pending Orders — Awaiting Findings</h2>
+    <div id="orders"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Awaiting Payment</h2>
+    <p class="muted">Findings entered, but the report/receipt cannot be printed until payment is collected.</p>
+    <div id="awaitingPayment"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div id="resultCard" class="card" style="display:none;"></div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+let currentPatient = null;
+let selectedWalkinTests = [];
+
+(async () => {
+  await requireRole(['radiographer','admin']);
+  loadOrders();
+  loadAwaitingPayment();
+  attachAutocomplete(document.getElementById('wiTestSearch'),
+    q => api('/api/tests/search?q=' + encodeURIComponent(q) + '&category=Radiology'),
+    item => { if (!selectedWalkinTests.find(t => t.name === item.name)) selectedWalkinTests.push(item); renderWiChips(); document.getElementById('wiTestSearch').value = ''; },
+    item => item.name);
+})();
+
+function renderWiChips() {
+  document.getElementById('wiChips').innerHTML = selectedWalkinTests.map((t, i) =>
+    `<span class="badge wait" style="margin:2px;">${esc(t.name)} <a href="javascript:void(0)" onclick="removeWiTest(${i})" style="color:inherit;">✕</a></span>`).join('') || '<span class="muted">No studies selected yet.</span>';
+}
+function removeWiTest(i) { selectedWalkinTests.splice(i, 1); renderWiChips(); }
+
+async function submitWalkIn() {
+  const mr_number = document.getElementById('wiMr').value.trim();
+  if (!mr_number) { toast('Enter the patient MR number.', 'error'); return; }
+  if (!selectedWalkinTests.length) { toast('Select at least one study.', 'error'); return; }
+  try {
+    const out = await api('/api/radiology/walk-in', { method: 'POST', body: JSON.stringify({ mr_number, tests: selectedWalkinTests.map(t => t.name) }) });
+    document.getElementById('wiMsg').innerHTML = `<p class="success">Walk-in order created for ${esc(out.patient_name)} (${esc(out.mr_number)}).</p>`;
+    document.getElementById('wiMr').value = '';
+    selectedWalkinTests = []; renderWiChips();
+    loadOrders();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function loadOrders() {
+  const rows = await api('/api/radiology/orders?status=pending');
+  const el = document.getElementById('orders');
+  if (!rows.length) { el.innerHTML = '<p class="muted">No pending orders.</p>'; return; }
+  el.innerHTML = '<table><tr><th>MR#</th><th>Patient</th><th>Studies</th><th>Source</th><th>Locked Fee</th><th></th></tr>' +
+    rows.map(o => `<tr>
+      <td>${esc(o.mr_number)}</td><td>${esc(o.patient_name)}</td><td>${o.tests.map(esc).join(', ')}</td>
+      <td><span class="badge ${o.order_source==='walkin'?'wait':'done'}">${o.order_source === 'walkin' ? 'Walk-in' : 'Doctor'}</span></td>
+      <td>${o.missing_prices.length ? `<span style="color:var(--danger);">No price: ${o.missing_prices.map(esc).join(', ')}</span>` : `Rs. ${o.locked_total}`}</td>
+      <td>
+        <button class="secondary" ${o.missing_prices.length ? 'disabled title="Ask admin to set pricing first"' : ''} onclick='openOrder(${o.id}, ${JSON.stringify(o.tests)}, ${JSON.stringify({mr_number:o.mr_number,name:o.patient_name,age:o.age,gender:o.gender})}, ${o.locked_total})'>Enter Findings</button>
+        <button class="secondary" onclick='editOrderTests(${o.id}, ${JSON.stringify(o.tests)})'>Edit Studies</button>
+        <button class="secondary" onclick="cancelOrder(${o.id})">Cancel</button>
+      </td>
+    </tr>`).join('') + '</table>';
+}
+
+async function editOrderTests(orderId, currentTests) {
+  const remaining = [...currentTests];
+  let choice;
+  do {
+    choice = prompt(`Current studies:\n${remaining.map((t,i) => `${i+1}. ${t}`).join('\n')}\n\nEnter a number to remove that study, or leave blank to save & close.`);
+    if (choice && !isNaN(Number(choice))) {
+      const idx = Number(choice) - 1;
+      if (idx >= 0 && idx < remaining.length) remaining.splice(idx, 1);
+    }
+  } while (choice);
+  if (!remaining.length) { toast('At least one study must remain — use Cancel to remove the whole order instead.', 'error'); return; }
+  try {
+    await api(`/api/radiology/orders/${orderId}`, { method: 'PUT', body: JSON.stringify({ tests: remaining }) });
+    toast('Order updated — bill recalculated.', 'success');
+    loadOrders();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function cancelOrder(orderId) {
+  if (!confirm('Cancel this entire order? The patient will not be billed for it.')) return;
+  try {
+    await api(`/api/radiology/orders/${orderId}/cancel`, { method: 'POST' });
+    toast('Order cancelled.', 'success');
+    loadOrders();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function loadAwaitingPayment() {
+  const rows = await api('/api/radiology/orders?status=awaiting_payment');
+  const el = document.getElementById('awaitingPayment');
+  if (!rows.length) { el.innerHTML = '<p class="muted">Nothing awaiting payment.</p>'; return; }
+  el.innerHTML = '<table><tr><th>MR#</th><th>Patient</th><th>Studies</th><th>Amount Due</th><th></th></tr>' +
+    rows.map(o => `<tr>
+      <td>${esc(o.mr_number)}</td><td>${esc(o.patient_name)}</td><td>${o.tests.map(esc).join(', ')}</td>
+      <td>Rs. ${o.payment_amount}</td>
+      <td><button class="primary" onclick='collectPayment(${o.id}, ${JSON.stringify({mr_number:o.mr_number,name:o.patient_name,age:o.age,gender:o.gender})}, ${JSON.stringify(o.results)})'>Collect Payment</button></td>
+    </tr>`).join('') + '</table>';
+}
+
+async function collectPayment(orderId, patient, results) {
+  try {
+    const out = await api(`/api/radiology/orders/${orderId}/collect-payment`, { method: 'POST' });
+    currentPatient = patient;
+    document.getElementById('resultCard').style.display = 'block';
+    document.getElementById('resultCard').innerHTML = `
+      <div class="receipt">
+        <strong>Payment collected. Receipt: ${esc(out.receipt_no)}</strong> — Rs. ${out.payment_amount}<br>
+        <button class="secondary no-print" onclick='printRadiologyReport(${JSON.stringify(results)})'>Print Radiology Report</button>
+        <button class="secondary no-print" onclick='printRadiologyReceipt(${JSON.stringify(out)})'>Print Payment Receipt</button>
+        <button class="secondary no-print" onclick="document.getElementById('resultCard').style.display='none'">Done</button>
+      </div>`;
+    loadAwaitingPayment();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+function openOrder(orderId, tests, patient, lockedTotal) {
+  currentPatient = patient;
+  const card = document.getElementById('resultCard');
+  card.style.display = 'block';
+  card.innerHTML = `<h2 class="no-print">${esc(patient.name)} (${esc(patient.mr_number)}) — Enter Findings</h2>
+    <div id="resultRows">${tests.map(t => `
+      <div><label>${esc(t)} — Findings</label><textarea class="resVal" data-test="${esc(t)}"></textarea></div>`).join('')}
+    <p class="no-print"><strong>Locked fee (from test master, cannot be changed here): Rs. ${lockedTotal}</strong></p>
+    <button class="primary no-print" onclick="submitResults(${orderId})">Save Findings (payment collected separately)</button>
+    <div id="resMsg"></div>`;
+}
+
+async function submitResults(orderId) {
+  const rows = [...document.querySelectorAll('#resultRows .resVal')];
+  const results = rows.map(r => ({ test: r.dataset.test, findings: r.value }));
+  try {
+    const out = await api(`/api/radiology/orders/${orderId}/results`, { method: 'POST', body: JSON.stringify({ results }) });
+    document.getElementById('resMsg').innerHTML = `<p class="success">Findings saved — Rs. ${out.payment_amount} due. Now awaiting payment (see the section below) before it can be printed.</p>`;
+    loadOrders();
+    loadAwaitingPayment();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+function printRadiologyReport(results) {
+  const rowsHtml = results.map(r => `<tr><td>${esc(r.test)}</td><td colspan="3">${esc(r.findings)}</td></tr>`).join('');
+  const now = new Date();
+  const html = `
+    ${receiptHeaderHTML('RADIOLOGY')}
+    <div class="doc-meta">
+      <p><strong>Patient:</strong> ${esc(currentPatient.name)}</p>
+      <p><strong>Age / Gender:</strong> ${esc(currentPatient.age || '—')} / ${esc(currentPatient.gender || '—')}</p>
+      <p><strong>MR Number:</strong> ${esc(currentPatient.mr_number)}</p>
+      <p><strong>Date & Time:</strong> ${now.toLocaleDateString()} ${now.toLocaleTimeString()}</p>
+    </div>
+    <table class="doc-table"><tr><th>Study</th><th colspan="3">Findings</th></tr>${rowsHtml}</table>
+    ${docFooterHTML()}
+  `;
+  printDocument(html, 'a4');
+}
+
+function printRadiologyReceipt(out) {
+  const html = buildReceiptHTML({
+    title: 'RADIOLOGY RECEIPT',
+    receiptNo: out.receipt_no,
+    meta: [
+      { label: 'Patient', value: currentPatient.name },
+      { label: 'MR Number', value: currentPatient.mr_number },
+      { label: 'Date & Time', value: new Date().toLocaleString() }
+    ],
+    items: [{ label: 'Radiology Studies', amount: out.payment_amount }],
+    total: out.payment_amount
+  });
+  printDocument(html, 'thermal');
+}
+</script>
+</body>
+</html>

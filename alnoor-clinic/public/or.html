@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Operation Room — Al Noor Clinic</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="topbar no-print">
+  <h1>Operation Room</h1>
+  <div><span class="who" data-who></span> &nbsp; <button onclick="logout()">Log out</button></div>
+</div>
+<div class="wrap">
+  <div class="card no-print">
+    <h2>Schedule a Procedure</h2>
+    <div class="row">
+      <input id="p_mr" placeholder="Patient MR number">
+      <input id="p_type" placeholder="Procedure type (e.g. Appendectomy, Normal Vaginal Delivery, D&C)">
+    </div>
+    <div class="row">
+      <input id="p_surgeon" placeholder="Surgeon / lead doctor">
+      <input id="p_room" placeholder="OR room">
+      <input id="p_time" type="datetime-local">
+    </div>
+    <label>Notes</label><textarea id="p_notes"></textarea>
+    <button class="primary" onclick="schedule()">Schedule</button>
+    <div id="schedMsg" class="success"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Scheduled Procedures</h2>
+    <div id="scheduled"><p class="muted">Loading…</p></div>
+  </div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+(async () => { await requireRole(['or_manager','admin']); load(); })();
+
+async function schedule() {
+  const mr_number = document.getElementById('p_mr').value.trim();
+  const procedure_type = document.getElementById('p_type').value.trim();
+  if (!mr_number || !procedure_type) { toast('MR number and procedure type are required.', 'error'); return; }
+  try {
+    await api('/api/procedures', { method: 'POST', body: JSON.stringify({
+      mr_number, procedure_type,
+      surgeon: document.getElementById('p_surgeon').value,
+      room: document.getElementById('p_room').value,
+      scheduled_at: document.getElementById('p_time').value,
+      notes: document.getElementById('p_notes').value
+    })});
+    document.getElementById('schedMsg').textContent = 'Scheduled.';
+    toast('Procedure scheduled.', 'success');
+    ['p_mr','p_type','p_surgeon','p_room','p_time','p_notes'].forEach(id => document.getElementById(id).value = '');
+    load();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function load() {
+  const rows = await api('/api/procedures?status=scheduled');
+  const el = document.getElementById('scheduled');
+  if (!rows.length) { el.innerHTML = '<p class="muted">Nothing scheduled.</p>'; return; }
+  el.innerHTML = '<table><tr><th>Patient</th><th>Procedure</th><th>Surgeon</th><th>Room</th><th>Time</th><th></th></tr>' +
+    rows.map(r => `<tr>
+      <td>${esc(r.patient_name)} (${esc(r.mr_number)})</td><td>${esc(r.procedure_type)}</td>
+      <td>${esc(r.surgeon)}</td><td>${esc(r.room)}</td><td>${esc(r.scheduled_at)}</td>
+      <td><button class="secondary" onclick="complete(${r.id})">Complete</button>
+      <button class="secondary" onclick="cancelProc(${r.id})">Cancel</button></td>
+    </tr>`).join('') + '</table>';
+}
+
+async function complete(id) {
+  const charge = prompt('Total charge for this procedure (Rs.)?', '0');
+  if (charge === null) return;
+  const out = await api(`/api/procedures/${id}/complete`, { method: 'POST', body: JSON.stringify({ charge_amount: Number(charge) || 0 }) });
+  toast('Completed. Receipt: ' + out.receipt_no, 'success');
+  load();
+}
+
+async function cancelProc(id) {
+  if (!confirm('Cancel this procedure?')) return;
+  await api(`/api/procedures/${id}/cancel`, { method: 'POST' });
+  load();
+}
+</script>
+</body>
+</html>

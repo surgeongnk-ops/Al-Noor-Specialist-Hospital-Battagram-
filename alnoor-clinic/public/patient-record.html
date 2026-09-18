@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Patient Record — Al Noor Clinic</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="topbar no-print">
+  <h1>Patient Record</h1>
+  <div><span class="who" data-who></span> &nbsp; <button onclick="logout()">Log out</button></div>
+</div>
+<div class="wrap">
+  <div class="card no-print">
+    <div class="row">
+      <input id="mrInput" placeholder="Enter MR number">
+      <button class="secondary" onclick="load()">Load</button>
+    </div>
+  </div>
+  <div id="record"></div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+(async () => {
+  await requireRole(null);
+  const params = new URLSearchParams(location.search);
+  if (params.get('mr')) { document.getElementById('mrInput').value = params.get('mr'); load(); }
+})();
+
+async function load() {
+  const mr = document.getElementById('mrInput').value.trim();
+  if (!mr) return;
+  const el = document.getElementById('record');
+  try {
+    const { patient, visits, admissions, procedures } = await api('/api/patients/' + encodeURIComponent(mr) + '/record');
+    el.innerHTML = `
+      <div class="card">
+        <h2>${esc(patient.name)} — ${esc(patient.mr_number)}</h2>
+        <p class="muted">${esc(patient.age||'')} ${esc(patient.gender||'')} · ${esc(patient.phone||'')} · ${esc(patient.address||'')}</p>
+        <p class="muted">Registered ${esc(patient.created_at)}</p>
+      </div>
+      ${admissions.map(a => `
+        <div class="card">
+          <h2>Admission — ${esc(a.ward)} ${a.room ? '/ '+esc(a.room) : ''} <span class="badge ${a.status==='discharged'?'done':'wait'}">${esc(a.status)}</span></h2>
+          <p><strong>Admitting doctor:</strong> ${esc(a.admitting_doctor)} · <strong>Reason:</strong> ${esc(a.reason||'—')}</p>
+          <p class="muted">Admitted ${esc(a.created_at)} ${a.discharged_at ? '· Discharged ' + esc(a.discharged_at) : ''}</p>
+          ${a.orders.map(o => `<p>• ${esc(o.order_text)} <span class="badge ${o.status==='done'?'done':'wait'}">${esc(o.status)}</span></p>`).join('')}
+          ${a.discharge_receipt_no ? `<p class="muted">Discharge receipt ${esc(a.discharge_receipt_no)} — Rs. ${a.discharge_charge}</p>` : ''}
+        </div>`).join('')}
+      ${procedures.map(pr => `
+        <div class="card">
+          <h2>Procedure — ${esc(pr.procedure_type)} <span class="badge ${pr.status==='completed'?'done':'wait'}">${esc(pr.status)}</span></h2>
+          <p><strong>Surgeon:</strong> ${esc(pr.surgeon||'—')} · <strong>Room:</strong> ${esc(pr.room||'—')} · <strong>Scheduled:</strong> ${esc(pr.scheduled_at||'—')}</p>
+          ${pr.receipt_no ? `<p class="muted">Receipt ${esc(pr.receipt_no)} — Rs. ${pr.charge_amount}</p>` : ''}
+          ${pr.notes ? `<p>${esc(pr.notes)}</p>` : ''}
+        </div>`).join('')}
+      ${visits.map(v => `
+        <div class="card">
+          <h2>Visit — ${esc(v.created_at)} <span class="badge ${v.status==='closed'?'done':'wait'}">${esc(v.status)}</span></h2>
+          <p><strong>Reason:</strong> ${esc(v.reason||'—')} ${v.room ? '· Room: '+esc(v.room) : ''}</p>
+          ${v.examinations.map(e => `<p><strong>Examination (${esc(e.created_at)}):</strong> ${esc(e.notes)}<br><strong>Diagnosis:</strong> ${esc(e.diagnosis)}</p>`).join('')}
+          ${v.lab_orders.map(o => `
+            <div><strong>Lab order (${esc(o.status)}):</strong> ${o.tests.map(esc).join(', ')}
+            ${o.results ? '<br>' + o.results.map(r => `${esc(r.test)}: ${esc(r.value)} (${esc(r.normal_range)})`).join('<br>') : ''}
+            ${o.receipt_no ? `<br><span class="muted">Receipt ${esc(o.receipt_no)} — Rs. ${o.payment_amount}</span>` : ''}</div>`).join('')}
+          ${v.radiology_orders.map(o => `
+            <div><strong>Radiology order (${esc(o.status)}):</strong> ${o.tests.map(esc).join(', ')}
+            ${o.results ? '<br>' + o.results.map(r => `${esc(r.test)}: ${esc(r.findings)}`).join('<br>') : ''}
+            ${o.receipt_no ? `<br><span class="muted">Receipt ${esc(o.receipt_no)} — Rs. ${o.payment_amount}</span>` : ''}</div>`).join('')}
+          ${v.prescriptions.map(pr => `
+            <div><strong>Prescription (${esc(pr.status)}):</strong><br>${pr.medicines.map(m => `${esc(m.name)} — ${esc(m.dosage)} — qty ${esc(m.qty)}`).join('<br>')}</div>`).join('')}
+        </div>
+      `).join('')}
+    `;
+  } catch (ex) {
+    el.innerHTML = `<div class="card error">${esc(ex.message)}</div>`;
+  }
+}
+</script>
+</body>
+</html>

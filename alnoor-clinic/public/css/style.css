@@ -1,0 +1,226 @@
+:root {
+  --navy: #1a3a5c;
+  --navy-dark: #10253d;
+  --teal: #1c8c7c;
+  --bg: #f4f6f8;
+  --card: #ffffff;
+  --border: #dde3e9;
+  --text: #1f2933;
+  --muted: #647485;
+  --danger: #c0392b;
+  --warn: #b7791f;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+.topbar {
+  background: var(--navy);
+  color: #fff;
+  padding: 14px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.topbar h1 { font-size: 18px; margin: 0; font-weight: 600; }
+.topbar .who { font-size: 13px; opacity: 0.85; }
+.topbar button {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.4);
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.wrap { max-width: 1000px; margin: 20px auto; padding: 0 16px; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+  margin-bottom: 16px;
+}
+.card h2 { margin-top: 0; font-size: 16px; color: var(--navy); }
+label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+input, select, textarea {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+}
+textarea { min-height: 70px; resize: vertical; }
+button.primary {
+  background: var(--teal);
+  color: #fff;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  margin-top: 12px;
+}
+button.primary:hover { opacity: 0.92; }
+button.secondary {
+  background: #fff;
+  color: var(--navy);
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+tr:hover td { background: #fafcfd; }
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600;
+}
+.badge.wait { background: #fdf3e0; color: var(--warn); }
+.badge.done { background: #e2f4ef; color: var(--teal); }
+.nav-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 12px; }
+.nav-tiles a {
+  display: block; background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 20px 14px; text-align: center; text-decoration: none; color: var(--navy); font-weight: 600;
+}
+.nav-tiles a:hover { border-color: var(--teal); color: var(--teal); }
+.error { color: var(--danger); font-size: 13px; margin-top: 8px; }
+.success { color: var(--teal); font-size: 13px; margin-top: 8px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.row > * { flex: 1; min-width: 140px; }
+.item-row { display: flex; gap: 8px; margin-bottom: 6px; align-items: center; }
+.item-row input { flex: 1; }
+.item-row button { flex: none; }
+.muted { color: var(--muted); font-size: 13px; }
+.receipt {
+  border: 1px dashed var(--border); border-radius: 8px; padding: 14px; margin-top: 12px; background: #fbfdfc;
+}
+.autocomplete-box {
+  position: absolute; z-index: 50; background: #fff; border: 1px solid var(--border); border-radius: 6px;
+  margin-top: 2px; max-height: 220px; overflow-y: auto; box-shadow: 0 4px 14px rgba(0,0,0,0.08); display: none; width: 100%;
+}
+.autocomplete-item { padding: 8px 10px; font-size: 14px; cursor: pointer; }
+.autocomplete-item:hover, .autocomplete-item.active { background: #eef6f4; }
+.stock-flag { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+.stock-flag.expired { background: #fbe1de; color: var(--danger); }
+.stock-flag.near_30 { background: #fdecc8; color: #92400e; }
+.stock-flag.near_60 { background: #fdf3e0; color: var(--warn); }
+.stock-flag.ok { background: #e2f4ef; color: var(--teal); }
+.stock-flag.low_stock { background: #fbe1de; color: var(--danger); }
+.result-flag { font-weight: 700; }
+.result-flag.high { color: var(--danger); }
+.result-flag.low { color: #1d4ed8; }
+.result-flag.normal { color: var(--teal); }
+.result-flag.abnormal { color: var(--danger); }
+.result-flag.critical { color: #fff; background: var(--danger); padding: 1px 6px; border-radius: 4px; }
+.critical-value-banner { background: #fdecea; border: 2px solid var(--danger); color: var(--danger); font-weight: 700; padding: 10px; margin-bottom: 12px; text-align: center; border-radius: 6px; }
+/* Reusable dismissible modal (e.g. the backup reminder) — a centered card over
+   a dim overlay, matching the same card/button styling as the rest of the app. */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(16, 37, 61, 0.55);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000; padding: 16px;
+}
+.modal-box {
+  background: var(--card); border-radius: 12px; padding: 22px;
+  max-width: 480px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+}
+.modal-box h2 { margin-top: 0; color: var(--navy); font-size: 17px; }
+.modal-box .modal-actions { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+@media print {
+  .no-print { display: none !important; }
+  .card { border: none; }
+}
+
+/* ===== Print document system (receipts, reports & certificates) ===== */
+#printArea { display: none; }
+.doc-header { text-align: center; border-bottom: 2px solid var(--navy); padding-bottom: 8px; margin-bottom: 10px; }
+.doc-header h1 { margin: 0; color: var(--navy); letter-spacing: 0.5px; }
+.doc-tagline { margin: 2px 0 0; color: var(--teal); font-weight: 600; font-style: italic; }
+.doc-contact { margin: 2px 0 0; color: var(--muted); }
+.doc-header h2 { margin: 8px 0 0; color: var(--navy-dark); font-weight: 700; letter-spacing: 1px; border-top: 1px solid var(--border); padding-top: 6px; }
+.doc-walkin-label { text-align: center; font-weight: 700; letter-spacing: 1px; color: var(--warn); border: 1px dashed var(--warn); padding: 4px; margin: 8px 0; }
+.doc-meta p { margin: 3px 0; }
+.doc-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+.doc-table th, .doc-table td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; }
+.doc-total { text-align: right; font-weight: 700; margin-top: 6px; }
+.doc-footer { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 8px; text-align: center; }
+.doc-footer p { margin: 0; color: var(--muted); }
+.doc-signature-block { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 40px; padding-top: 10px; border-top: 1px solid var(--border); }
+.doc-signature-line { text-align: right; }
+
+/* Thermal (80mm roll) — narrow, compact type. Used for all receipts: registration,
+   pharmacy, lab/radiology payment, IPD discharge charges, master receipt. */
+.doc-thermal { width: 74mm; font-size: 11px; }
+.doc-thermal .doc-header h1 { font-size: 14px; }
+.doc-thermal .doc-tagline { font-size: 9px; }
+.doc-thermal .doc-contact { font-size: 8px; }
+.doc-thermal .doc-header h2 { font-size: 10px; }
+.doc-thermal .doc-total { font-size: 13px; }
+.doc-thermal .doc-footer p { font-size: 9px; }
+.doc-thermal .doc-table th, .doc-thermal .doc-table td { padding: 3px 4px; font-size: 10px; }
+.doc-thermal .doc-signature-block { display: none; } /* no signature block on a cash receipt */
+
+/* A4 (210mm x 297mm) — full-page formal documents: Lab/Radiology Reports, Birth/
+   Death/Discharge Certificates. Shared by every official document so the
+   letterhead and layout are identical no matter which one is printed. */
+.doc-a4 { width: 100%; font-size: 14px; }
+.doc-a4 .doc-header h1 { font-size: 24px; }
+.doc-a4 .doc-tagline { font-size: 13px; }
+.doc-a4 .doc-contact { font-size: 11px; }
+.doc-a4 .doc-header h2 { font-size: 16px; }
+.doc-a4 .doc-total { font-size: 16px; }
+.doc-a4 .doc-footer p { font-size: 12px; }
+.doc-a4 .doc-signature-block { font-size: 13px; page-break-inside: avoid; }
+
+@media print {
+  body.printing-only > *:not(#printArea) { display: none !important; }
+  body.printing-only #printArea { display: block !important; }
+}
+
+/* Specimen/tube barcode label — a small sticker (not a receipt, not a report),
+   printed the moment payment clears so it can go straight onto the tube. */
+.doc-label { width: 50mm; font-size: 9px; text-align: center; }
+.doc-label .label-hospital { font-weight: 700; font-size: 9px; color: var(--navy); margin: 0 0 2px; }
+.doc-label .label-patient { font-weight: 700; font-size: 10px; margin: 2px 0; }
+.doc-label .label-meta { color: var(--muted); font-size: 8px; margin: 1px 0; }
+.doc-label .label-barcode { margin: 3px 0; }
+.doc-label .label-tests { font-size: 8px; margin-top: 2px; word-wrap: break-word; }
+
+/* One-test-per-A4-page laboratory report: each test is wrapped in its own
+   .lab-report-page, and every page but the last forces a hard page break —
+   the ISO 15189 requirement that CBC and Urine R/E (for example) can never
+   share a printed page. Both the modern and legacy print CSS properties are
+   set since browser/print-driver support still varies. */
+.lab-report-page { page-break-after: always; break-after: page; }
+.lab-report-page:last-child { page-break-after: auto; break-after: auto; }
+.lab-report-page .doc-report-footer { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-top: 30px; padding-top: 10px; border-top: 1px solid var(--border); }
+.lab-report-page .doc-report-footer .sig-block { text-align: center; font-size: 12px; }
+.lab-report-page .doc-report-footer .sig-line { margin-top: 30px; border-top: 1px solid var(--text); padding-top: 4px; min-width: 140px; }
+.lab-report-page .doc-report-qr { text-align: center; }
+.lab-report-page .doc-report-qr svg { width: 70px; height: 70px; }
+.lab-report-page .doc-report-qr .qr-caption { font-size: 8px; color: var(--muted); margin-top: 2px; }
+.lab-report-page .critical-banner { background: #fdecea; border: 2px solid var(--danger); color: var(--danger); font-weight: 700; text-align: center; padding: 6px; margin: 8px 0; letter-spacing: 0.5px; }
+
+/* ===== Toast notifications ===== */
+#toastContainer {
+  position: fixed; top: 16px; right: 16px; z-index: 1000;
+  display: flex; flex-direction: column; gap: 8px; max-width: 340px;
+}
+.toast {
+  background: var(--navy-dark); color: #fff; padding: 12px 16px; border-radius: 8px;
+  font-size: 14px; box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+  opacity: 0; transform: translateX(20px); transition: opacity 0.25s, transform 0.25s;
+}
+.toast-show { opacity: 1; transform: translateX(0); }
+.toast-error { background: var(--danger); }
+.toast-success { background: var(--teal); }
+.toast-info { background: var(--navy-dark); }
