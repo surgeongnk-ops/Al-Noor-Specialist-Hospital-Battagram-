@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Nursing — Al Noor Clinic</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="topbar no-print">
+  <h1>Nursing</h1>
+  <div><span class="who" data-who></span> &nbsp; <button onclick="logout()">Log out</button></div>
+</div>
+<div class="wrap">
+  <div class="card no-print">
+    <h2>Official Certificates</h2>
+    <div class="nav-tiles">
+      <a href="/birth-certificate.html">Birth Certificate</a>
+      <a href="/discharge-certificate.html">Discharge Certificate</a>
+      <a href="/death-certificate.html">Death Certificate</a>
+    </div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Active Inpatients & Doctor Orders</h2>
+    <p class="muted">Nurses record execution of orders here — dosage confirmed, timestamped, under your ID. Only a doctor can write or change an order or a discharge summary.</p>
+    <div id="inpatients"><p class="muted">Loading…</p></div>
+  </div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+(async () => { await requireRole(['nurse','admin']); load(); })();
+
+async function load() {
+  const rows = await api('/api/admissions?status=active');
+  const el = document.getElementById('inpatients');
+  if (!rows.length) { el.innerHTML = '<p class="muted">No active inpatients.</p>'; return; }
+  el.innerHTML = rows.map(a => `
+    <div style="border-bottom:1px solid var(--border); padding:12px 0;">
+      <strong>${esc(a.patient_name)} (${esc(a.mr_number)})</strong> — ${esc(a.ward)} ${a.room ? '/ '+esc(a.room) : ''}
+      <span class="muted">${esc(a.age||'')} ${esc(a.gender||'')} — doctor: ${esc(a.admitting_doctor)}</span><br>
+      <span class="muted">Reason: ${esc(a.reason||'—')}</span>
+      <table style="margin-top:8px;">
+        <tr><th>Order</th><th>Priority</th><th>Status</th><th>Administrations</th><th></th></tr>
+        ${a.orders.map(o => `<tr>
+          <td>${esc(o.order_text)}</td>
+          <td>${o.priority === 'urgent' ? '<strong style="color:var(--danger)">Urgent</strong>' : 'Routine'}</td>
+          <td><span class="badge ${o.status==='done'?'done':'wait'}">${esc(o.status)}</span></td>
+          <td>${o.administrations.length ? o.administrations.map(m => `<div class="muted">${esc(m.administered_at)} — ${esc(m.dosage_confirmed)} (${esc(m.nurse_id)})</div>`).join('') : '<span class="muted">none yet</span>'}</td>
+          <td>
+            ${o.status === 'pending' ? `<button class="secondary" onclick="ack(${o.id})">Acknowledge</button>` : ''}
+            ${o.status !== 'done' ? `<button class="secondary" onclick="markDone(${o.id})">Mark Done</button>` : ''}
+            <button class="secondary" onclick="administer(${o.id})">Record Given</button>
+          </td>
+        </tr>`).join('')}
+      </table>
+      ${a.discharge_summary
+        ? `<p class="muted" style="margin-top:8px;">Discharge summary on file by ${esc(a.discharge_summary.doctor_id)}.
+            <button class="secondary" onclick='printDischargeSummary(${JSON.stringify(a.discharge_summary)}, ${JSON.stringify({name:a.patient_name,mr_number:a.mr_number,age:a.age,gender:a.gender})}, ${JSON.stringify({ward:a.ward,room:a.room,admitting_doctor:a.admitting_doctor,created_at:a.created_at})})'>Print Discharge Summary</button>
+            <button class="secondary" onclick='discharge(${a.id}, ${JSON.stringify(a.patient_name)}, ${JSON.stringify(a.mr_number)})'>Discharge Patient</button></p>`
+        : `<p style="margin-top:8px; color:var(--warn);">No discharge summary yet — ask the doctor to write one before this patient can be discharged.</p>`}
+    </div>`).join('');
+}
+
+async function ack(orderId) { await api(`/api/orders/${orderId}/acknowledge`, { method: 'POST' }); load(); }
+async function markDone(orderId) { await api(`/api/orders/${orderId}/done`, { method: 'POST' }); load(); }
+
+async function administer(orderId) {
+  const dosage = prompt('Dosage confirmed / what was given?');
+  if (dosage === null) return;
+  const notes = prompt('Notes (optional)?') || '';
+  await api(`/api/orders/${orderId}/administer`, { method: 'POST', body: JSON.stringify({ dosage_confirmed: dosage, notes }) });
+  load();
+}
+
+async function discharge(admissionId, patientName, mr) {
+  const charge = prompt('Discharge / ward charges (Rs.)?', '0');
+  if (charge === null) return;
+  try {
+    const out = await api(`/api/admissions/${admissionId}/discharge`, { method: 'POST', body: JSON.stringify({ discharge_charge: Number(charge) || 0 }) });
+    printIpdReceipt(out.receipt_no, patientName, mr, Number(charge) || 0);
+    load();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+function printIpdReceipt(receiptNo, patientName, mr, amount) {
+  const html = buildReceiptHTML({
+    title: 'IPD DISCHARGE RECEIPT',
+    receiptNo,
+    meta: [
+      { label: 'Patient', value: patientName },
+      { label: 'MR Number', value: mr },
+      { label: 'Date & Time', value: new Date().toLocaleString() }
+    ],
+    items: [{ label: 'Ward / Discharge Charges', amount }],
+    total: amount
+  });
+  printDocument(html, 'thermal');
+}
+
+// Formal A4 clinical document — separate print job from the financial receipt above.
+function printDischargeSummary(summary, patient, admission) {
+  const html = `
+    ${receiptHeaderHTML('IPD DISCHARGE SUMMARY')}
+    <div class="doc-meta">
+      <p><strong>Patient:</strong> ${esc(patient.name)}</p>
+      <p><strong>Age / Gender:</strong> ${esc(patient.age || '—')} / ${esc(patient.gender || '—')}</p>
+      <p><strong>MR Number:</strong> ${esc(patient.mr_number)}</p>
+      <p><strong>Ward / Room:</strong> ${esc(admission.ward)} ${admission.room ? '/ ' + esc(admission.room) : ''}</p>
+      <p><strong>Admitting Doctor:</strong> ${esc(admission.admitting_doctor)}</p>
+      <p><strong>Admitted:</strong> ${esc(admission.created_at)}</p>
+      <p><strong>Discharge Date & Time:</strong> ${new Date().toLocaleString()}</p>
+    </div>
+    <table class="doc-table">
+      <tr><th style="width:30%;">Diagnosis Summary</th><td>${esc(summary.diagnosis_summary || '—')}</td></tr>
+      <tr><th>Condition at Discharge</th><td>${esc(summary.condition_at_discharge || '—')}</td></tr>
+      <tr><th>Discharge Instructions</th><td>${esc(summary.discharge_instructions || '—')}</td></tr>
+      <tr><th>Follow-up Plan</th><td>${esc(summary.follow_up || '—')}</td></tr>
+    </table>
+    <p style="margin-top:30px;">Attending Doctor: ${esc(summary.doctor_id)} &nbsp;&nbsp;&nbsp;&nbsp; Signature: _______________________</p>
+    ${docFooterHTML()}
+  `;
+  printDocument(html, 'a4');
+}
+</script>
+</body>
+</html>

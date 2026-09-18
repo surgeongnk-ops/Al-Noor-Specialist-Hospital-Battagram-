@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Pharmacy — Al Noor Clinic</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="topbar no-print">
+  <h1>Medical Store</h1>
+  <div><span class="who" data-who></span> &nbsp; <button onclick="logout()">Log out</button></div>
+</div>
+<div class="wrap">
+
+  <div class="card no-print">
+    <h2>Pending Prescriptions</h2>
+    <div id="rxList"><p class="muted">Loading…</p></div>
+  </div>
+  <div id="dispenseCard" class="card" style="display:none;"></div>
+
+  <div class="card no-print">
+    <h2>Point of Sale (Walk-in / OTC Sale)</h2>
+    <p class="muted">Direct counter sale — with or without a prescription. Qty is always in individual units, so dispensing part of a pack (e.g. 5 tablets from a 20-tablet strip) is billed at the exact per-unit price.</p>
+    <div class="row">
+      <input id="posMr" placeholder="Patient MR number (optional)">
+    </div>
+    <div id="posRows"></div>
+    <button class="secondary" type="button" onclick="addPosRow()">+ Add item</button>
+    <div class="row" style="margin-top:10px; max-width:600px;">
+      <div><label>Discount % (max 1%)</label><input id="posDiscount" type="number" step="0.1" max="1" min="0" value="0" oninput="recalcPos()"></div>
+      <div><label>Insurance Provider (optional)</label><input id="posInsurer" placeholder="e.g. State Life, none"></div>
+      <div><label>Insurance Covers (Rs.)</label><input id="posInsuranceAmt" type="number" step="0.01" min="0" value="0" oninput="recalcPos()"></div>
+    </div>
+    <p id="posRunningTotal" class="muted" style="font-weight:600;"></p>
+    <div id="posSafetyWarnings" style="margin:8px 0;"></div>
+    <button class="primary" onclick="submitPos()">Complete Sale & Generate Receipt</button>
+    <div id="posMsg"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Add Inventory Batch</h2>
+    <div class="row">
+      <span style="position:relative; flex:2;"><input id="b_name" placeholder="Drug name"></span>
+      <input id="b_batch" placeholder="Batch number">
+    </div>
+    <div class="row">
+      <div><label>Units per pack (1 = loose item, e.g. syrup)</label><input id="b_upp" type="number" value="1" min="1" oninput="toggleBatchMode()"></div>
+      <div><label>Expiry date</label><input id="b_expiry" type="date"></div>
+    </div>
+
+    <div id="packFields" style="display:none;">
+      <div class="row">
+        <input id="b_packs" type="number" placeholder="Number of packs/strips">
+        <input id="b_packPurchase" type="number" placeholder="Purchase price per PACK (Rs.)">
+        <input id="b_packSelling" type="number" placeholder="Selling price per PACK (Rs.)">
+      </div>
+      <p class="muted" id="packPreview"></p>
+    </div>
+    <div id="unitFields">
+      <div class="row">
+        <input id="b_qty" type="number" placeholder="Quantity (units)">
+        <input id="b_purchase" type="number" placeholder="Purchase price per unit (Rs.)">
+        <input id="b_selling" type="number" placeholder="Selling price per unit (Rs.)">
+      </div>
+    </div>
+
+    <div class="row">
+      <input id="b_company" placeholder="Company name">
+      <input id="b_distributor" placeholder="Distributor name">
+      <input id="b_invoice" placeholder="Invoice / Bill number">
+    </div>
+    <button class="secondary" onclick="addBatch()">Add Batch</button>
+    <div id="batchMsg" class="success"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Suppliers</h2>
+    <div class="row">
+      <input id="supName" placeholder="Supplier / distributor name">
+      <input id="supPhone" placeholder="Phone">
+      <input id="supLicense" placeholder="License number (optional)">
+      <button class="secondary" onclick="addSupplier()">Add Supplier</button>
+    </div>
+    <div id="supplierMsg" class="success"></div>
+    <div id="supplierTable" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Purchase Orders</h2>
+    <p class="muted">Creating a PO does not add stock — only Receive does, item by item, so a partial delivery is handled correctly.</p>
+    <div class="row">
+      <div style="flex:2;"><label>Supplier</label><select id="poSupplier"></select></div>
+      <div><label>Expected date</label><input id="poExpected" type="date"></div>
+    </div>
+    <div id="poItemRows"></div>
+    <button class="secondary" type="button" onclick="addPoItemRow()">+ Add drug line</button>
+    <label>Notes</label><input id="poNotes" placeholder="e.g. quarterly restock order">
+    <button class="primary" onclick="createPurchaseOrder()">Create Purchase Order</button>
+    <div id="poMsg" class="success"></div>
+
+    <h3 style="margin-top:16px;">Purchase Orders</h3>
+    <div id="poTable"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Inventory — Stock & Expiry</h2>
+    <p class="muted">
+      <span class="stock-flag expired">EXPIRED</span> &nbsp;
+      <span class="stock-flag near_30">≤30 days</span> &nbsp;
+      <span class="stock-flag near_60">≤60 days</span> &nbsp;
+      <span class="stock-flag ok">OK</span> &nbsp;
+      <span class="stock-flag low_stock">LOW STOCK (&lt;5 packs)</span>
+    </p>
+    <p class="muted">Pharmacy staff cannot edit or delete entries here — corrections are made by an admin (Admin → Pharmacy Inventory). Stock only moves via a completed sale or an admin-approved adjustment below.</p>
+    <div id="inventoryTable"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Report Wastage / Damage / Expired / Return</h2>
+    <p class="muted">This does not change stock by itself — it only takes effect once an admin approves it. Nothing here can be reversed by pharmacy staff.</p>
+    <div class="row">
+      <div style="flex:2;"><label>Batch</label><select id="adjBatch"></select></div>
+      <div><label>Type</label>
+        <select id="adjType">
+          <option value="wastage">Wastage</option>
+          <option value="damaged">Damaged</option>
+          <option value="expired">Expired</option>
+          <option value="return">Return</option>
+        </select>
+      </div>
+      <div><label>Quantity</label><input id="adjQty" type="number"></div>
+    </div>
+    <label>Reason</label><input id="adjReason" placeholder="e.g. box crushed in transit, patient returned unopened">
+    <button class="secondary" onclick="requestAdjustment()">Submit Request</button>
+    <div id="adjMsg" class="success"></div>
+
+    <h3 style="margin-top:16px;">My Pending Requests</h3>
+    <div id="adjPending"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Controlled Substances (Narcotics Register)</h2>
+    <p class="muted">Every dispense or sale of a drug flagged below as controlled writes an entry here automatically — this list itself is never editable, only the flag on which drugs count as controlled.</p>
+    <div id="controlledDrugsAdminBlock" style="display:none;">
+      <div class="row">
+        <span style="position:relative; flex:2;"><input id="ctrlDrugName" placeholder="Drug name (must already exist in Inventory / master list)"></span>
+        <button class="secondary" onclick="setDrugControlled(true)">Mark Controlled</button>
+        <button class="secondary" onclick="setDrugControlled(false)">Unmark</button>
+      </div>
+      <div id="ctrlMsg" class="success"></div>
+      <p class="muted" id="controlledList"></p>
+    </div>
+    <div class="row" style="max-width:300px;">
+      <input id="narcDate" type="date">
+      <button class="secondary" onclick="loadNarcoticsLog()">Load Register</button>
+    </div>
+    <div id="narcoticsTable" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Process Medicine Return</h2>
+    <p class="muted">For a patient bringing back unused/unopened medicine from an earlier sale — restocks and refunds immediately, no admin approval needed. Look up the original sale by its receipt number first.</p>
+    <div class="row" style="max-width:400px;">
+      <input id="retReceipt" placeholder="Original sale receipt number (e.g. R-00042)">
+      <button class="secondary" onclick="lookupSaleForReturn()">Look Up</button>
+    </div>
+    <div id="retSaleInfo" style="margin-top:12px;"></div>
+    <div id="retMsg"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Pharmacy Daily Report</h2>
+    <p class="muted">Purchases, sales, returns/refunds and profit for a given day, viewable directly here — no admin login needed.</p>
+    <div class="row" style="max-width:300px;">
+      <input id="pharmReportDate" type="date">
+      <button class="secondary" onclick="loadPharmacyDailyReport()">Load</button>
+    </div>
+    <div id="pharmDailyReport" style="margin-top:14px;"></div>
+  </div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+let meRole = null;
+(async () => {
+  const me = await requireRole(['pharmacy','admin']);
+  meRole = me.role;
+  loadRx(); loadInventory(); addPosRow(); attachBatchAutocomplete(); loadPendingAdjustments();
+  document.getElementById('pharmReportDate').value = new Date().toISOString().slice(0, 10);
+  loadPharmacyDailyReport();
+  loadSuppliers(); loadPurchaseOrders(); addPoItemRow();
+  document.getElementById('narcDate').value = new Date().toISOString().slice(0, 10);
+  loadNarcoticsLog();
+  if (meRole === 'admin') {
+    document.getElementById('controlledDrugsAdminBlock').style.display = 'block';
+    loadControlledDrugsList();
+    attachAutocomplete(document.getElementById('ctrlDrugName'), q => api('/api/drugs/search?q=' + encodeURIComponent(q)), () => {}, item => item.name);
+  }
+})();
+
+// ---- Suppliers ----
+async function loadSuppliers() {
+  const rows = await api('/api/pharmacy/suppliers');
+  const el = document.getElementById('supplierTable');
+  const sel = document.getElementById('poSupplier');
+  el.innerHTML = rows.length
+    ? '<table><tr><th>Name</th><th>Phone</th><th>License#</th><th>Status</th></tr>' +
+      rows.map(s => `<tr><td>${esc(s.name)}</td><td>${esc(s.phone||'—')}</td><td>${esc(s.license_number||'—')}</td><td>${s.active ? 'Active' : 'Inactive'}</td></tr>`).join('') + '</table>'
+    : '<p class="muted">No suppliers added yet.</p>';
+  const active = rows.filter(s => s.active);
+  sel.innerHTML = active.length
+    ? active.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')
+    : '<option value="">Add a supplier first</option>';
+}
+
+async function addSupplier() {
+  const msg = document.getElementById('supplierMsg');
+  msg.className = ''; msg.textContent = '';
+  const name = document.getElementById('supName').value.trim();
+  if (!name) { msg.className = 'error'; msg.textContent = 'Supplier name is required.'; return; }
+  try {
+    await api('/api/pharmacy/suppliers', { method: 'POST', body: JSON.stringify({
+      name, phone: document.getElementById('supPhone').value, license_number: document.getElementById('supLicense').value
+    })});
+    msg.className = 'success'; msg.textContent = 'Supplier added.';
+    document.getElementById('supName').value = ''; document.getElementById('supPhone').value = ''; document.getElementById('supLicense').value = '';
+    loadSuppliers();
+  } catch (ex) { msg.className = 'error'; msg.textContent = ex.message; }
+}
+
+// ---- Purchase Orders ----
+function addPoItemRow() {
+  const wrap = document.getElementById('poItemRows');
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `
+    <span style="position:relative; flex:2;"><input class="poDrugName" placeholder="Drug name"></span>
+    <input class="poQty" type="number" placeholder="Qty ordered (units)" style="max-width:140px;">
+    <input class="poCost" type="number" step="0.01" placeholder="Unit cost (Rs.)" style="max-width:140px;">
+    <button class="secondary" type="button" onclick="this.parentElement.remove()">✕</button>`;
+  wrap.appendChild(row);
+  attachAutocomplete(row.querySelector('.poDrugName'), q => api('/api/drugs/search?q=' + encodeURIComponent(q)), () => {}, item => item.name);
+}
+
+async function createPurchaseOrder() {
+  const msg = document.getElementById('poMsg');
+  msg.className = ''; msg.textContent = '';
+  const supplier_id = document.getElementById('poSupplier').value;
+  if (!supplier_id) { msg.className = 'error'; msg.textContent = 'Select a supplier first.'; return; }
+  const items = [...document.querySelectorAll('#poItemRows .row')].map(r => ({
+    name: r.querySelector('.poDrugName').value.trim(),
+    qty: Number(r.querySelector('.poQty').value) || 0,
+    unit_cost: Number(r.querySelector('.poCost').value) || 0
+  })).filter(i => i.name && i.qty > 0);
+  if (!items.length) { msg.className = 'error'; msg.textContent = 'Add at least one drug line with a quantity.'; return; }
+  try {
+    const out = await api('/api/pharmacy/purchase-orders', { method: 'POST', body: JSON.stringify({
+      supplier_id: Number(supplier_id), items, notes: document.getElementById('poNotes').value, expected_date: document.getElementById('poExpected').value
+    })});
+    msg.className = 'success'; msg.textContent = `Purchase order ${out.po_number} created.`;
+    document.getElementById('poItemRows').innerHTML = ''; addPoItemRow();
+    document.getElementById('poNotes').value = '';
+    loadPurchaseOrders();
+  } catch (ex) { msg.className = 'error'; msg.textContent = ex.message; }
+}
+
+async function loadPurchaseOrders() {
+  const rows = await api('/api/pharmacy/purchase-orders');
+  const el = document.getElementById('poTable');
+  if (!rows.length) { el.innerHTML = '<p class="muted">No purchase orders yet.</p>'; return; }
+  const statusLabel = { draft: 'Draft', ordered: 'Ordered', partially_received: 'Partially Received', received: 'Received', cancelled: 'Cancelled' };
+  el.innerHTML = rows.map(po => `
+    <div id="po-${po.id}" style="border-bottom:1px solid var(--border); padding:10px 0;">
+      <strong>${esc(po.po_number)}</strong> — ${esc(po.supplier_name)} — <span class="badge ${po.status === 'received' ? 'done' : 'wait'}">${statusLabel[po.status] || esc(po.status)}</span>
+      <span class="muted"> — ${esc(po.created_at)}</span>
+      <table style="margin-top:6px;"><tr><th>Drug</th><th>Ordered</th><th>Received</th><th>Unit Cost</th>${po.status !== 'received' && po.status !== 'cancelled' ? '<th>Receive Now</th>' : ''}</tr>
+        ${po.items.map(i => `<tr><td>${esc(i.drug_name)}</td><td>${i.qty_ordered}</td><td>${i.qty_received}</td><td>Rs. ${i.unit_cost.toFixed(2)}</td>
+          ${po.status !== 'received' && po.status !== 'cancelled' ? `<td><input type="number" class="recvQty" data-item="${i.id}" style="max-width:80px;" placeholder="qty"></td>` : ''}</tr>`).join('')}
+      </table>
+      ${po.status !== 'received' && po.status !== 'cancelled' ? `
+        <div class="row" style="margin-top:6px; max-width:500px;">
+          <input class="recvBatch" data-po="${po.id}" placeholder="Batch number">
+          <input class="recvExpiry" data-po="${po.id}" type="date">
+          <button class="primary" onclick="receivePurchaseOrder(${po.id})">Receive</button>
+          ${meRole === 'admin' ? `<button class="secondary" onclick="cancelPurchaseOrder(${po.id})">Cancel PO</button>` : ''}
+        </div>` : ''}
+    </div>`).join('');
+}
+
+async function receivePurchaseOrder(poId) {
+  const container = document.getElementById(`po-${poId}`);
+  const qtyInputs = [...container.querySelectorAll('.recvQty')];
+  const batchInput = container.querySelector(`.recvBatch[data-po="${poId}"]`);
+  const expiryInput = container.querySelector(`.recvExpiry[data-po="${poId}"]`);
+  const receipts = qtyInputs.map(inp => ({
+    item_id: Number(inp.dataset.item),
+    qty_received_now: Number(inp.value) || 0,
+    batch_number: batchInput ? batchInput.value : '',
+    expiry_date: expiryInput ? expiryInput.value : ''
+  })).filter(r => r.qty_received_now > 0);
+  if (!receipts.length) { toast('Enter a quantity received for at least one line.', 'error'); return; }
+  try {
+    const out = await api(`/api/pharmacy/purchase-orders/${poId}/receive`, { method: 'POST', body: JSON.stringify({ receipts }) });
+    toast(`Received ${out.batchesCreated.length} item(s) — PO now ${out.newStatus}.`, 'success');
+    loadPurchaseOrders(); loadInventory();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function cancelPurchaseOrder(poId) {
+  if (!confirm('Cancel this purchase order?')) return;
+  try {
+    await api(`/api/pharmacy/purchase-orders/${poId}/cancel`, { method: 'POST' });
+    loadPurchaseOrders();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+// ---- Controlled substances (admin-only flag management) ----
+async function loadControlledDrugsList() {
+  const rows = await api('/api/pharmacy/drugs');
+  const controlled = rows.filter(d => d.is_controlled);
+  document.getElementById('controlledList').textContent = controlled.length
+    ? 'Currently controlled: ' + controlled.map(d => d.name).join(', ')
+    : 'No drugs currently flagged as controlled.';
+}
+
+async function setDrugControlled(flag) {
+  const msg = document.getElementById('ctrlMsg');
+  const name = document.getElementById('ctrlDrugName').value.trim();
+  if (!name) { msg.className = 'error'; msg.textContent = 'Enter a drug name first.'; return; }
+  try {
+    await api(`/api/pharmacy/drugs/${encodeURIComponent(name)}/controlled`, { method: 'PUT', body: JSON.stringify({ is_controlled: flag }) });
+    msg.className = 'success'; msg.textContent = `${name} ${flag ? 'marked as controlled' : 'unmarked'}.`;
+    loadControlledDrugsList();
+  } catch (ex) { msg.className = 'error'; msg.textContent = ex.message; }
+}
+
+// ---- Narcotics register (view) ----
+async function loadNarcoticsLog() {
+  const date = document.getElementById('narcDate').value;
+  const el = document.getElementById('narcoticsTable');
+  const rows = await api('/api/pharmacy/narcotics-log' + (date ? '?date=' + date : ''));
+  el.innerHTML = rows.length
+    ? '<table><tr><th>Date/Time</th><th>Drug</th><th>Qty</th><th>Batch#</th><th>Patient</th><th>Prescriber</th><th>Receipt#</th><th>Dispensed By</th></tr>' +
+      rows.map(n => `<tr><td>${esc(n.created_at)}</td><td>${esc(n.drug_name)}</td><td>${n.qty}</td><td>${esc(n.batch_number||'—')}</td>
+        <td>${esc(n.patient_name||'Walk-in')}</td><td>${esc(n.prescriber_id||'—')}</td><td>${esc(n.receipt_no||'—')}</td><td>${esc(n.dispensed_by)}</td></tr>`).join('') + '</table>'
+    : '<p class="muted">No controlled-substance dispenses on record for this filter.</p>';
+}
+
+function attachBatchAutocomplete() {
+  attachAutocomplete(document.getElementById('b_name'), q => api('/api/drugs/search?q=' + encodeURIComponent(q)), () => {}, item => item.name);
+}
+
+// ---- Prescriptions from doctors ----
+async function loadRx() {
+  const rows = await api('/api/pharmacy/prescriptions?status=pending');
+  const el = document.getElementById('rxList');
+  if (!rows.length) { el.innerHTML = '<p class="muted">No pending prescriptions.</p>'; return; }
+  el.innerHTML = '<table><tr><th>MR#</th><th>Patient</th><th>Medicines</th><th></th></tr>' +
+    rows.map(r => `<tr><td>${esc(r.mr_number)}</td><td>${esc(r.patient_name)}</td>
+      <td>${r.medicines.map(m => esc(m.name) + (m.dosage ? ' — ' + esc(m.dosage) : '')).join('<br>')}</td>
+      <td><button class="secondary" onclick='openRx(${r.id}, ${JSON.stringify(r.medicines)}, "${esc(r.mr_number)}", "${esc(r.patient_name)}")'>Dispense</button></td></tr>`).join('') + '</table>';
+}
+
+function openRx(rxId, medicines, mr, name) {
+  const card = document.getElementById('dispenseCard');
+  card.style.display = 'block';
+  card.innerHTML = `<h2 class="no-print">${esc(name)} (${esc(mr)}) — Dispense</h2>
+    <div id="dispSafetyWarnings" class="no-print" style="margin-bottom:10px;"></div>
+    <div id="dispRows">${medicines.map(m => `
+      <div class="row" style="align-items:end;">
+        <div><label>${esc(m.name)} <span class="muted">(${esc(m.dosage||'')})</span></label>
+          <input class="dName" type="hidden" value="${esc(m.name)}">
+          <input class="dQty" type="number" placeholder="Qty dispensed" value="${esc(m.qty||'')}"></div>
+        <div><label>Unit price override (Rs., optional)</label><input class="dPrice" type="number" placeholder="uses stock price"></div>
+      </div>`).join('')}
+    <div class="row no-print" style="max-width:500px;">
+      <div><label>Discount % (max 1%)</label><input id="dispDiscount" type="number" step="0.1" max="1" min="0" value="0"></div>
+      <div><label>Insurance Provider (optional)</label><input id="dispInsurer" placeholder="e.g. State Life, none"></div>
+      <div><label>Insurance Covers (Rs.)</label><input id="dispInsuranceAmt" type="number" step="0.01" min="0" value="0"></div>
+    </div>
+    <button class="primary no-print" onclick='submitDispense(${rxId}, ${JSON.stringify(mr)}, ${JSON.stringify(name)})'>Save & Generate Receipt</button>
+    <div id="dispMsg"></div>`;
+  checkDispenseSafety(medicines.map(m => m.name), mr);
+}
+
+async function checkDispenseSafety(names, mr) {
+  const el = document.getElementById('dispSafetyWarnings');
+  if (!el || !names.length) return;
+  try {
+    const result = await api('/api/pharmacy/safety-check?drugs=' + encodeURIComponent(names.join(',')) + '&mr=' + encodeURIComponent(mr));
+    if (!result.hasWarnings) { el.innerHTML = ''; return; }
+    const rows = [
+      ...result.allergyWarnings.map(w => `<div class="stock-flag expired" style="display:inline-block; margin:2px 0;">⚠ ALLERGY: patient has a noted allergy matching "${esc(w.allergyTerm)}" — dispensing: ${esc(w.drug)}</div>`),
+      ...result.interactionWarnings.map(w => `<div class="stock-flag ${w.severity === 'severe' ? 'expired' : 'near_30'}" style="display:inline-block; margin:2px 0;">⚠ ${esc(w.severity.toUpperCase())} INTERACTION: ${esc(w.drugA)} + ${esc(w.drugB)} — ${esc(w.note || '')}</div>`)
+    ];
+    el.innerHTML = rows.map(r => `<div>${r}</div>`).join('');
+  } catch { /* non-critical */ }
+}
+
+async function submitDispense(rxId, mr, name) {
+  const rows = [...document.querySelectorAll('#dispRows .row')];
+  const items = rows.map(r => {
+    const qty = Number(r.querySelector('.dQty').value) || 0;
+    const priceOverride = r.querySelector('.dPrice').value;
+    return { name: r.querySelector('.dName').value, qty, unit_price: priceOverride ? Number(priceOverride) : undefined };
+  }).filter(i => i.qty > 0);
+  const discount_percent = Math.min(1, Number(document.getElementById('dispDiscount').value) || 0);
+  const insurance_provider = document.getElementById('dispInsurer').value.trim();
+  const insurance_covered_amount = Number(document.getElementById('dispInsuranceAmt').value) || 0;
+  try {
+    const out = await api(`/api/pharmacy/prescriptions/${rxId}/dispense`, { method: 'POST', body: JSON.stringify({ items, discount_percent, insurance_provider: insurance_provider || undefined, insurance_covered_amount }) });
+    renderReceipt('dispMsg', out, mr, name);
+    loadRx(); loadInventory();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+function renderReceipt(elId, out, mr, patientName) {
+  const shortfalls = out.items.filter(i => i.stock_shortfall);
+  document.getElementById(elId).innerHTML = `
+    <div class="receipt">
+      <strong>Receipt: ${esc(out.receipt_no)}</strong><br>
+      <table style="margin-top:8px;"><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr>
+        ${out.items.map(i => `<tr><td>${esc(i.name)}</td><td>${i.qty}</td><td>Rs. ${i.unit_price}</td><td>Rs. ${i.total.toFixed(2)}</td></tr>`).join('')}
+      </table>
+      Subtotal: Rs. ${out.subtotal.toFixed(2)} &nbsp; Discount: ${out.discount_percent}% <br>
+      ${out.insurance_covered_amount > 0 ? `
+        Bill Total: Rs. ${out.payment_amount.toFixed(2)} &nbsp; Insurance Covered: Rs. ${out.insurance_covered_amount.toFixed(2)}<br>
+        <strong>Patient Paid: Rs. ${out.patient_payable.toFixed(2)}</strong>
+      ` : `<strong>Total Paid: Rs. ${out.payment_amount.toFixed(2)}</strong>`}
+      ${shortfalls.length ? `<p style="color:var(--danger);">⚠ Insufficient stock for: ${shortfalls.map(i => esc(i.name) + ' (short ' + i.stock_shortfall + ')').join(', ')}. Please restock.</p>` : ''}
+      <br><button class="secondary no-print" onclick='printPharmacyReceipt(${JSON.stringify(out)}, ${JSON.stringify(mr||"")}, ${JSON.stringify(patientName||"")})'>Print Receipt</button>
+    </div>`;
+}
+
+function printPharmacyReceipt(out, mr, patientName) {
+  const meta = [];
+  if (patientName) meta.push({ label: 'Patient', value: patientName });
+  if (mr) meta.push({ label: 'MR Number', value: mr });
+  meta.push({ label: 'Date & Time', value: new Date().toLocaleString() });
+  meta.push({ label: 'Discount Applied', value: out.discount_percent + '%' });
+  if (out.insurance_covered_amount > 0) {
+    meta.push({ label: 'Insurance Covered', value: 'Rs. ' + out.insurance_covered_amount.toFixed(2) });
+    meta.push({ label: 'Patient Paid', value: 'Rs. ' + out.patient_payable.toFixed(2) });
+  }
+  const html = buildReceiptHTML({
+    title: 'PHARMACY RECEIPT',
+    receiptNo: out.receipt_no,
+    meta,
+    items: out.items.map(i => ({ label: `${i.name} x${i.qty}`, amount: i.total })),
+    total: out.payment_amount
+  });
+  printDocument(html, 'thermal');
+}
+
+// ---- POS (walk-in sale) ----
+function addPosRow() {
+  const wrap = document.getElementById('posRows');
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.style.alignItems = 'end';
+  row.innerHTML = `
+    <div style="position:relative; flex:2;"><label>Drug</label><input class="posName"></div>
+    <div style="max-width:100px;"><label>Qty</label><input class="posQty" type="number"></div>
+    <div style="max-width:120px;"><label>Unit Price (editable)</label><input class="posPrice" type="number" step="0.01"></div>
+    <div style="max-width:120px;"><label>Subtotal</label><input class="posSubtotal" type="text" readonly tabindex="-1"></div>
+    <div><button class="secondary" type="button" onclick="this.closest('.row').remove(); recalcPos();">✕</button></div>`;
+  wrap.appendChild(row);
+  const nameInput = row.querySelector('.posName');
+  attachAutocomplete(nameInput, q => api('/api/pharmacy/stock-summary?q=' + encodeURIComponent(q)),
+    item => {
+      // Autocomplete only pre-fills a suggested price — the field stays fully editable,
+      // since the pharmacist may need to adjust it (this was the frozen-field bug).
+      row.querySelector('.posPrice').value = item.current_price || 0;
+      row.dataset.stock = item.total_remaining;
+      recalcRow(row);
+      checkPosSafety();
+    },
+    item => `${item.drug_name} (${item.total_remaining} in stock${item.low_stock ? ' — LOW STOCK' : ''}, Rs. ${item.current_price})`);
+  row.querySelector('.posQty').addEventListener('input', () => recalcRow(row));
+  row.querySelector('.posPrice').addEventListener('input', () => recalcRow(row));
+  nameInput.addEventListener('blur', () => checkPosSafety());
+}
+
+function recalcRow(row) {
+  const qty = Number(row.querySelector('.posQty').value) || 0;
+  const price = Number(row.querySelector('.posPrice').value) || 0;
+  row.querySelector('.posSubtotal').value = qty && price ? (qty * price).toFixed(2) : '';
+  recalcPos();
+}
+
+function recalcPos() {
+  const rows = [...document.querySelectorAll('#posRows .row')];
+  const grandTotal = rows.reduce((sum, r) => {
+    const qty = Number(r.querySelector('.posQty').value) || 0;
+    const price = Number(r.querySelector('.posPrice').value) || 0;
+    return sum + qty * price;
+  }, 0);
+  const discount = Math.min(1, Number(document.getElementById('posDiscount').value) || 0);
+  const afterDiscount = grandTotal * (1 - discount / 100);
+  const insuranceAmt = Math.min(afterDiscount, Math.max(0, Number(document.getElementById('posInsuranceAmt').value) || 0));
+  const payable = afterDiscount - insuranceAmt;
+  const el = document.getElementById('posRunningTotal');
+  if (el) el.textContent = insuranceAmt > 0
+    ? `Subtotal: Rs. ${grandTotal.toFixed(2)}  —  After discount: Rs. ${afterDiscount.toFixed(2)}  —  Insurance covers: Rs. ${insuranceAmt.toFixed(2)}  —  Patient pays: Rs. ${payable.toFixed(2)}`
+    : `Subtotal: Rs. ${grandTotal.toFixed(2)}  —  After discount: Rs. ${afterDiscount.toFixed(2)}`;
+}
+
+// Non-blocking drug-drug / drug-allergy check for the POS sale — same endpoint
+// the Doctor Portal's prescription screen uses (see checkRxSafety there).
+async function checkPosSafety() {
+  const el = document.getElementById('posSafetyWarnings');
+  if (!el) return;
+  const names = [...document.querySelectorAll('#posRows .posName')].map(i => i.value.trim()).filter(Boolean);
+  const mr = document.getElementById('posMr').value.trim();
+  if (!names.length) { el.innerHTML = ''; return; }
+  try {
+    const params = 'drugs=' + encodeURIComponent(names.join(',')) + (mr ? '&mr=' + encodeURIComponent(mr) : '');
+    const result = await api('/api/pharmacy/safety-check?' + params);
+    if (!result.hasWarnings) { el.innerHTML = ''; return; }
+    const rows = [
+      ...result.allergyWarnings.map(w => `<div class="stock-flag expired" style="display:inline-block; margin:2px 0;">⚠ ALLERGY: patient has a noted allergy matching "${esc(w.allergyTerm)}" — selling: ${esc(w.drug)}</div>`),
+      ...result.interactionWarnings.map(w => `<div class="stock-flag ${w.severity === 'severe' ? 'expired' : 'near_30'}" style="display:inline-block; margin:2px 0;">⚠ ${esc(w.severity.toUpperCase())} INTERACTION: ${esc(w.drugA)} + ${esc(w.drugB)} — ${esc(w.note || '')}</div>`)
+    ];
+    el.innerHTML = rows.map(r => `<div>${r}</div>`).join('');
+  } catch { /* non-critical */ }
+}
+
+async function submitPos() {
+  const rows = [...document.querySelectorAll('#posRows .row')];
+  const items = rows.map(r => ({
+    name: r.querySelector('.posName').value,
+    qty: Number(r.querySelector('.posQty').value) || 0,
+    unit_price: Number(r.querySelector('.posPrice').value) || 0
+  })).filter(i => i.name && i.qty > 0);
+  if (!items.length) { toast('Add at least one item with a quantity.', 'error'); return; }
+  const discount_percent = Math.min(1, Number(document.getElementById('posDiscount').value) || 0);
+  const mr_number = document.getElementById('posMr').value.trim();
+  const insurance_provider = document.getElementById('posInsurer').value.trim();
+  const insurance_covered_amount = Number(document.getElementById('posInsuranceAmt').value) || 0;
+  try {
+    const out = await api('/api/pharmacy/sale', { method: 'POST', body: JSON.stringify({ mr_number: mr_number || undefined, items, discount_percent, insurance_provider: insurance_provider || undefined, insurance_covered_amount }) });
+    renderReceipt('posMsg', out, mr_number);
+    document.getElementById('posRows').innerHTML = ''; addPosRow();
+    document.getElementById('posMr').value = '';
+    document.getElementById('posInsurer').value = ''; document.getElementById('posInsuranceAmt').value = 0;
+    document.getElementById('posSafetyWarnings').innerHTML = '';
+    loadInventory();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+// ---- Inventory ----
+async function loadInventory() {
+  const rows = await api('/api/pharmacy/batches');
+  const el = document.getElementById('inventoryTable');
+  populateAdjustmentBatches(rows);
+  if (!rows.length) { el.innerHTML = '<p class="muted">No inventory added yet.</p>'; return; }
+  const labels = { expired: 'EXPIRED', near_30: '≤30 days', near_60: '≤60 days', ok: 'OK' };
+  el.innerHTML = '<table><tr><th>Drug</th><th>Batch#</th><th>Remaining (units)</th><th>Pack Size</th><th>Expiry</th><th>Unit Purchase</th><th>Unit Selling</th><th>Company</th><th>Distributor</th><th>Status</th></tr>' +
+    rows.map(b => `<tr>
+      <td>${esc(b.drug_name)}</td><td>${esc(b.batch_number)}</td>
+      <td>${b.quantity_remaining} / ${b.quantity}${b.units_per_pack > 1 ? ` <span class="muted">(${b.packs_remaining} packs + ${b.loose_units_remaining} loose)</span>` : ''}</td>
+      <td>${b.units_per_pack > 1 ? esc(b.units_per_pack) + '/pack' : 'loose'}</td>
+      <td>${esc(b.expiry_date||'—')}</td><td>Rs. ${b.purchase_price.toFixed(2)}</td><td>Rs. ${b.selling_price.toFixed(2)}</td>
+      <td>${esc(b.company_name)}</td><td>${esc(b.distributor_name)}</td>
+      <td><span class="stock-flag ${b.status}">${labels[b.status]}</span> ${b.low_stock ? '<span class="stock-flag low_stock">LOW STOCK</span>' : ''}</td>
+    </tr>`).join('') + '</table>';
+}
+
+function populateAdjustmentBatches(rows) {
+  const sel = document.getElementById('adjBatch');
+  const inStock = rows.filter(b => b.quantity_remaining > 0);
+  sel.innerHTML = inStock.length
+    ? inStock.map(b => `<option value="${b.id}" data-max="${b.quantity_remaining}">${esc(b.drug_name)} — batch ${esc(b.batch_number)} (${b.quantity_remaining} remaining, exp ${esc(b.expiry_date||'—')})</option>`).join('')
+    : '<option value="">No stock available</option>';
+}
+
+async function requestAdjustment() {
+  const msg = document.getElementById('adjMsg');
+  msg.className = ''; msg.textContent = '';
+  const batch_id = document.getElementById('adjBatch').value;
+  if (!batch_id) { msg.className = 'error'; msg.textContent = 'No batch selected.'; return; }
+  try {
+    await api('/api/pharmacy/adjustments', { method: 'POST', body: JSON.stringify({
+      batch_id: Number(batch_id),
+      adjustment_type: document.getElementById('adjType').value,
+      qty: document.getElementById('adjQty').value,
+      reason: document.getElementById('adjReason').value
+    })});
+    msg.className = 'success'; msg.textContent = 'Request submitted — pending admin approval. Stock is unchanged until then.';
+    document.getElementById('adjQty').value = ''; document.getElementById('adjReason').value = '';
+    loadPendingAdjustments();
+  } catch (ex) { msg.className = 'error'; msg.textContent = ex.message; }
+}
+
+async function loadPendingAdjustments() {
+  const rows = await api('/api/pharmacy/adjustments?status=pending');
+  const el = document.getElementById('adjPending');
+  el.innerHTML = rows.length
+    ? '<table><tr><th>Drug</th><th>Type</th><th>Qty</th><th>Reason</th><th>Requested</th></tr>' +
+      rows.map(a => `<tr><td>${esc(a.drug_name)}</td><td>${esc(a.adjustment_type)}</td><td>${a.qty}</td><td>${esc(a.reason)}</td><td class="muted">${esc(a.requested_at)}</td></tr>`).join('') + '</table>'
+    : '<p class="muted">None pending.</p>';
+}
+
+function toggleBatchMode() {
+  const upp = Number(document.getElementById('b_upp').value) || 1;
+  document.getElementById('packFields').style.display = upp > 1 ? 'block' : 'none';
+  document.getElementById('unitFields').style.display = upp > 1 ? 'none' : 'block';
+  updatePackPreview();
+}
+
+function updatePackPreview() {
+  const upp = Number(document.getElementById('b_upp').value) || 1;
+  const packs = Number(document.getElementById('b_packs').value) || 0;
+  const packSell = Number(document.getElementById('b_packSelling').value) || 0;
+  const preview = document.getElementById('packPreview');
+  if (upp > 1 && packs > 0) {
+    preview.textContent = `= ${packs * upp} total units. Per-unit selling price: Rs. ${(packSell / upp).toFixed(2)}`;
+  } else {
+    preview.textContent = '';
+  }
+}
+document.addEventListener('input', (e) => {
+  if (['b_packs','b_packSelling'].includes(e.target.id)) updatePackPreview();
+});
+
+async function addBatch() {
+  const msg = document.getElementById('batchMsg');
+  msg.className = ''; msg.textContent = '';
+  const upp = Number(document.getElementById('b_upp').value) || 1;
+  const body = {
+    drug_name: document.getElementById('b_name').value.trim(),
+    batch_number: document.getElementById('b_batch').value,
+    expiry_date: document.getElementById('b_expiry').value,
+    company_name: document.getElementById('b_company').value,
+    distributor_name: document.getElementById('b_distributor').value,
+    invoice_number: document.getElementById('b_invoice').value,
+    units_per_pack: upp
+  };
+  if (upp > 1) {
+    body.pack_quantity = document.getElementById('b_packs').value;
+    body.pack_purchase_price = document.getElementById('b_packPurchase').value;
+    body.pack_selling_price = document.getElementById('b_packSelling').value;
+  } else {
+    body.quantity = document.getElementById('b_qty').value;
+    body.purchase_price = document.getElementById('b_purchase').value;
+    body.selling_price = document.getElementById('b_selling').value;
+  }
+  try {
+    const out = await api('/api/pharmacy/batches', { method: 'POST', body: JSON.stringify(body) });
+    msg.className = 'success'; msg.textContent = `Batch added: ${out.total_units_added} units at Rs. ${out.unit_selling_price.toFixed(2)}/unit.`;
+    ['b_name','b_batch','b_expiry','b_qty','b_purchase','b_selling','b_packs','b_packPurchase','b_packSelling','b_company','b_distributor','b_invoice'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('b_upp').value = 1;
+    toggleBatchMode();
+    loadInventory();
+  } catch (ex) { msg.className = 'error'; msg.textContent = ex.message; }
+}
+
+// ---- Process Medicine Return (self-service, no admin approval) ----
+let lastLookedUpSale = null;
+
+async function lookupSaleForReturn() {
+  const receipt = document.getElementById('retReceipt').value.trim();
+  const info = document.getElementById('retSaleInfo');
+  if (!receipt) { toast('Enter a receipt number first.', 'error'); return; }
+  info.innerHTML = '<p class="muted">Looking up…</p>';
+  try {
+    const sale = await api('/api/pharmacy/sale-by-receipt/' + encodeURIComponent(receipt));
+    lastLookedUpSale = sale;
+    const returnableItems = sale.items.filter(i => i.returnable_qty > 0);
+    info.innerHTML = `
+      <p><strong>Sale ${esc(sale.receipt_no)}</strong> — ${esc(sale.created_at)} ${sale.patient_name ? '— ' + esc(sale.patient_name) : ''}</p>
+      ${returnableItems.length ? `
+        <table><tr><th>Medicine</th><th>Sold Qty</th><th>Already Returned</th><th>Returnable</th><th>Unit Price</th><th>Return Qty</th><th>Reason</th><th></th></tr>
+          ${returnableItems.map((i, idx) => `<tr>
+            <td>${esc(i.name)}</td><td>${i.qty}</td><td>${i.already_returned}</td><td>${i.returnable_qty}</td><td>Rs. ${i.unit_price}</td>
+            <td><input id="retQty_${idx}" type="number" min="1" max="${i.returnable_qty}" style="max-width:80px;"></td>
+            <td><input id="retReason_${idx}" placeholder="e.g. unopened, wrong medicine" style="max-width:160px;"></td>
+            <td><button class="secondary" onclick='submitReturn(${JSON.stringify(sale.receipt_no)}, ${JSON.stringify(i.name)}, ${idx})'>Return</button></td>
+          </tr>`).join('')}
+        </table>` : '<p class="muted">Nothing left to return from this sale — every item has already been fully returned.</p>'}
+    `;
+  } catch (ex) {
+    lastLookedUpSale = null;
+    info.innerHTML = `<p class="error">${esc(ex.message)}</p>`;
+  }
+}
+
+async function submitReturn(receiptNo, drugName, idx) {
+  const qty = Number(document.getElementById(`retQty_${idx}`).value) || 0;
+  const reason = document.getElementById(`retReason_${idx}`).value;
+  if (qty <= 0) { toast('Enter a return quantity.', 'error'); return; }
+  try {
+    const out = await api('/api/pharmacy/returns', { method: 'POST', body: JSON.stringify({ receipt_no: receiptNo, drug_name: drugName, qty, reason }) });
+    document.getElementById('retMsg').innerHTML = `<p class="success">Returned ${out.qty} x ${esc(out.drug_name)} — refund Rs. ${out.refund_amount.toFixed(2)} (${esc(out.return_no)}).
+      <button class="secondary no-print" onclick='printMedicineReturnReceipt(${JSON.stringify(out)})'>Print Return Receipt</button></p>`;
+    lookupSaleForReturn(); // refresh returnable quantities
+    loadInventory();
+    loadPharmacyDailyReport();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+function printMedicineReturnReceipt(out) {
+  const html = buildReceiptHTML({
+    title: 'MEDICINE RETURN / REFUND RECEIPT',
+    receiptNo: out.return_no,
+    meta: [
+      { label: 'Original Sale Receipt', value: out.original_receipt_no },
+      { label: 'Date & Time', value: new Date().toLocaleString() }
+    ],
+    items: [{ label: `${out.drug_name} x${out.qty} (Rs. ${out.unit_price}/unit)`, amount: out.refund_amount }],
+    total: out.refund_amount,
+    footerNote: 'Refunded to patient — medicine restocked into inventory.'
+  });
+  printDocument(html, 'thermal');
+}
+
+// ---- Pharmacy Daily Report — available directly to Pharmacy staff, not just Admin ----
+let lastPharmDailyReport = null;
+
+async function loadPharmacyDailyReport() {
+  const date = document.getElementById('pharmReportDate').value;
+  if (!date) { toast('Pick a date first.', 'error'); return; }
+  const el = document.getElementById('pharmDailyReport');
+  el.innerHTML = '<p class="muted">Loading…</p>';
+  try {
+    const pharm = await api('/api/reports/pharmacy-daily?date=' + date);
+    lastPharmDailyReport = pharm;
+    el.innerHTML = `
+      <table>
+        <tr><td>Purchases (${pharm.purchases.batchesAdded} batches received)</td><td>Rs. ${pharm.purchases.total.toLocaleString()}</td></tr>
+        <tr><td>Gross Sales (${pharm.saleCount} sales)</td><td>Rs. ${pharm.grossSales.toLocaleString()}</td></tr>
+        <tr><td>Medicine Returns / Refunds (${pharm.returnCount})</td><td>- Rs. ${pharm.totalRefunds.toLocaleString()}</td></tr>
+        <tr><td>Net Sales</td><td>Rs. ${pharm.netSales.toLocaleString()}</td></tr>
+        <tr><td>Cost of Goods Sold (net of returns)</td><td>Rs. ${pharm.adjustedCogs.toLocaleString()}</td></tr>
+        <tr style="font-weight:700;"><td>Net Profit</td><td>Rs. ${pharm.netProfit.toLocaleString()}</td></tr>
+      </table>
+      ${pharm.sales.length ? `
+        <h3 style="margin-top:16px;">Sales — ${esc(pharm.date)}</h3>
+        <table><tr><th>Receipt#</th><th>Items</th><th>Amount</th><th>Dispensed By</th></tr>
+          ${pharm.sales.map(s => `<tr><td>${esc(s.receipt_no)}</td><td>${s.items.map(i => esc(i.name)+' x'+i.qty).join(', ')}</td><td>Rs. ${s.payment_amount.toLocaleString()}</td><td>${esc(s.dispensed_by)}</td></tr>`).join('')}
+        </table>` : '<p class="muted">No sales this date.</p>'}
+      ${pharm.returns.length ? `
+        <h3 style="margin-top:16px;">Returns — ${esc(pharm.date)}</h3>
+        <table><tr><th>Return #</th><th>Medicine</th><th>Qty</th><th>Refund</th><th>Original Receipt</th></tr>
+          ${pharm.returns.map(r => `<tr><td>${esc(r.return_no)}</td><td>${esc(r.drug_name)}</td><td>${r.qty}</td><td>Rs. ${r.refund_amount.toLocaleString()}</td><td>${esc(r.original_receipt_no)}</td></tr>`).join('')}
+        </table>` : ''}
+      <button class="secondary no-print" style="margin-top:14px;" onclick="printPharmacyDailyReport()">Print Daily Report</button>
+    `;
+  } catch (ex) {
+    el.innerHTML = `<p class="error">Could not load the report: ${esc(ex.message)}</p>`;
+    toast(ex.message, 'error');
+  }
+}
+
+function printPharmacyDailyReport() {
+  if (!lastPharmDailyReport) return;
+  const p = lastPharmDailyReport;
+  const items = [
+    { label: `Purchases (${p.purchases.batchesAdded} batches)`, amount: p.purchases.total },
+    { label: `Gross Sales (${p.saleCount} sales)`, amount: p.grossSales },
+    { label: `Returns / Refunds (${p.returnCount})`, amount: -p.totalRefunds },
+    { label: 'Net Sales', amount: p.netSales },
+    { label: 'Cost of Goods Sold (net of returns)', amount: p.adjustedCogs },
+    { label: 'Net Profit', amount: p.netProfit }
+  ];
+  const html = buildReceiptHTML({
+    title: 'PHARMACY DAILY REPORT',
+    meta: [{ label: 'Date', value: p.date }],
+    items,
+    total: p.netProfit,
+    footerNote: 'Pharmacy Management System — Daily Closing'
+  });
+  printDocument(html, 'thermal');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Admin — Al Noor Clinic</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="topbar no-print">
+  <h1>Admin</h1>
+  <div><span class="who" data-who></span> &nbsp; <button onclick="logout()">Log out</button></div>
+</div>
+
+<div id="backupReminderModal" class="modal-overlay no-print" style="display:none;">
+  <div class="modal-box">
+    <h2>⚠ Back Up Your Data</h2>
+    <p id="backupReminderText" class="muted"></p>
+    <p class="muted">This hospital system stores everything on this one computer. If its disk fails, is stolen, or is damaged, any data that was never copied elsewhere is gone for good.</p>
+    <div class="modal-actions">
+      <button class="primary" onclick="downloadLatestBackupFromReminder()">Download Backup Now</button>
+      <button class="secondary" onclick="dismissBackupReminder()">Remind Me Tomorrow</button>
+    </div>
+  </div>
+</div>
+
+<div id="rangesModal" class="modal-overlay no-print" style="display:none;">
+  <div class="modal-box" style="max-width:640px;">
+    <h2 id="rangesModalTitle">Reference Range Bands</h2>
+    <p class="muted">Add a band to override the default range for a specific age/sex group (e.g. FSH post-menopausal, pediatric TSH). Leave low/high blank and fill "text range" instead for a qualitative band (e.g. Positive/Negative). A patient who matches no band here just gets the test's own default range — nothing here is required.</p>
+    <div id="rangeBandsTable"><p class="muted">Loading…</p></div>
+    <h3 style="margin-top:16px;">Add Band</h3>
+    <div class="row">
+      <select id="rangeComponent"><option value="">(applies to the whole test)</option></select>
+      <select id="rangeSex">
+        <option value="ANY">Any sex</option>
+        <option value="M">Male</option>
+        <option value="F">Female</option>
+      </select>
+    </div>
+    <div class="row">
+      <input id="rangeAgeMin" type="number" step="0.1" placeholder="Age from (years), e.g. 50">
+      <input id="rangeAgeMax" type="number" step="0.1" placeholder="Age to (years), e.g. 150">
+      <input id="rangeLabel" placeholder="Label, e.g. Post-menopausal">
+    </div>
+    <div class="row">
+      <input id="rangeUnit" placeholder="Unit">
+      <input id="rangeLow" type="number" step="0.01" placeholder="Low">
+      <input id="rangeHigh" type="number" step="0.01" placeholder="High">
+    </div>
+    <div class="row">
+      <input id="rangeText" placeholder="Or a text range (e.g. Positive / Negative) — used instead of low/high">
+    </div>
+    <button class="primary" onclick="addRangeBand()">Add Band</button>
+    <div id="rangeBandMsg"></div>
+    <div class="modal-actions">
+      <button class="secondary" onclick="closeRangesModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="analyzerModal" class="modal-overlay no-print" style="display:none;">
+  <div class="modal-box" style="max-width:680px;">
+    <h2 id="analyzerModalTitle">Configure Analyzer</h2>
+    <div class="row">
+      <label><input type="checkbox" id="azEnabled"> Enabled (bridge starts automatically when the server runs)</label>
+    </div>
+    <div id="azConfigFields"></div>
+    <button class="primary" onclick="saveAnalyzerConfig()">Save Settings</button>
+    <div id="azConfigMsg"></div>
+
+    <h3 style="margin-top:18px;">Test Code Mapping</h3>
+    <p class="muted">Once the analyzer is connected and sending real results, its own code/name for each parameter appears in Lab's Analyzer Inbox — add a mapping here so future messages pre-fill the right field automatically.</p>
+    <div id="azTestMapTable"><p class="muted">Loading…</p></div>
+    <div class="row">
+      <input id="azMapSourceCode" placeholder="Analyzer's code (e.g. WBC)">
+      <input id="azMapTargetTest" placeholder="Our test name (e.g. CBC (Complete Blood Count))">
+      <input id="azMapTargetComponent" placeholder="Component, if a panel (e.g. WBC Count) — leave blank if not">
+    </div>
+    <button class="secondary" onclick="addAnalyzerTestMap()">Add Mapping</button>
+
+    <h3 style="margin-top:18px;">Recent Activity</h3>
+    <div id="azLogs" style="max-height:180px; overflow-y:auto; font-family:monospace; font-size:12px; background:#f4f6f8; padding:8px; border-radius:6px;"></div>
+
+    <div class="modal-actions">
+      <button class="secondary" onclick="closeAnalyzerModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="card no-print">
+    <h2>Hospital Census</h2>
+    <div id="census" class="row"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Quick Links</h2>
+    <div class="nav-tiles">
+      <a href="/reception.html">Reception</a>
+      <a href="/doctor.html">Doctor</a>
+      <a href="/lab.html">Lab</a>
+      <a href="/radiology.html">Radiology</a>
+      <a href="/pharmacy.html">Pharmacy</a>
+      <a href="/nursing.html">Nursing</a>
+      <a href="/or.html">Operation Room</a>
+      <a href="/patient-record.html">Patient Record</a>
+      <a href="/billing.html">Billing / Master Receipt</a>
+    </div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Official Certificates</h2>
+    <div class="nav-tiles">
+      <a href="/birth-certificate.html">Birth Certificate</a>
+      <a href="/discharge-certificate.html">Discharge Certificate</a>
+      <a href="/death-certificate.html">Death Certificate</a>
+    </div>
+  </div>
+
+
+  <div class="card no-print">
+    <h2>Low Stock Alert</h2>
+    <p class="muted">Drugs currently below 5 packs (or 5 units, for loose items). Stock at or above 5 packs is not flagged.</p>
+    <div id="lowStockTable"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Pharmacy Inventory — Admin Corrections</h2>
+    <p class="muted">Direct edit/delete for correcting data-entry mistakes (wrong batch number, miscounted quantity, wrong expiry date). Every change here is audit-logged. This is separate from — and does not require — the wastage/damage/return approval workflow below.</p>
+    <div id="adminBatchTable"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Export to CSV / Excel</h2>
+    <p class="muted">Downloads open directly in Excel, Google Sheets, or any spreadsheet app — for offline reporting and local backup.</p>
+
+    <h3>Financial Export</h3>
+    <div class="row">
+      <button class="secondary" onclick="location.href='/api/export/financial-detailed'">Revenue — Detailed (by department, cashier)</button>
+      <button class="secondary" onclick="location.href='/api/export/revenue-summary'">Revenue — Summary Totals</button>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <button class="secondary" onclick="location.href='/api/export/purchases-detailed'">Distributor Purchases</button>
+      <button class="secondary" onclick="location.href='/api/export/pharmacy-sales'">Pharmacy Sales</button>
+      <button class="secondary" onclick="location.href='/api/export/inventory'">Inventory</button>
+    </div>
+
+    <h3 style="margin-top:16px;">Clinical / Patient Export</h3>
+    <div class="row">
+      <button class="secondary" onclick="location.href='/api/export/clinical-log'">Clinical Log (tests, results, prescriptions)</button>
+      <button class="secondary" onclick="location.href='/api/export/lab-results'">Lab Results (raw)</button>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <button class="secondary" onclick="location.href='/api/export/patients'">Patients</button>
+      <button class="secondary" onclick="location.href='/api/export/visits'">Visits</button>
+      <button class="secondary" onclick="location.href='/api/export/procedures'">Procedures</button>
+    </div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Doctor Dashboard</h2>
+    <div id="doctorDash"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Revenue</h2>
+    <div class="row" style="max-width:400px;">
+      <select id="revRange" onchange="loadRevenue()">
+        <option value="today">Today</option>
+        <option value="week">Last 7 days</option>
+        <option value="month">Last 30 days</option>
+        <option value="all" selected>All time</option>
+      </select>
+    </div>
+    <div id="revenue" style="margin-top:12px;"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Add Staff Account</h2>
+    <div class="row">
+      <input id="s_id" placeholder="Staff ID (login)">
+      <input id="s_name" placeholder="Full name">
+      <select id="s_role">
+        <option value="reception">Reception</option>
+        <option value="doctor">Doctor</option>
+        <option value="lab">Lab (Technician)</option>
+        <option value="phlebotomist">Phlebotomist (Sample Collection)</option>
+        <option value="pathologist">Pathologist (Result Verification)</option>
+        <option value="radiographer">Radiographer</option>
+        <option value="pharmacy">Pharmacy</option>
+        <option value="nurse">Nurse</option>
+        <option value="or_manager">OR Manager</option>
+        <option value="admin">Admin</option>
+      </select>
+      <input id="s_pass" placeholder="Temporary password">
+    </div>
+    <button class="primary" onclick="addStaff()">Create Account</button>
+    <div id="staffMsg" class="success"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Staff Accounts</h2>
+    <p class="muted">Disable a departing staff member's account first if there's any chance you'll need their history intact — reports, receipts, and the audit log all still show their name. Delete only once you're sure: it permanently removes the account (their past records stay on file, but can no longer be edited via that account).</p>
+    <div id="staffTable"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Database Backups</h2>
+    <p class="muted">Backups run automatically once a day and are kept for 30 days — but they're saved on this same computer. If this PC's disk fails, the backups folder is lost with it. <strong>Download a copy periodically and save it to a USB drive, another computer, or cloud storage</strong> — that's the only thing that protects you if this machine itself is lost, stolen, or damaged.</p>
+    <button class="secondary" onclick="runBackupNow()">Back Up Now</button>
+    <div id="backupMsg" class="success"></div>
+    <div id="backupList" style="margin-top:12px;"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Audit Log — Record Views & Logins</h2>
+    <div class="row">
+      <input id="auditMr" placeholder="Filter by MR number (optional)">
+      <button class="secondary" onclick="loadAudit()">Filter</button>
+    </div>
+    <div id="auditTable" style="margin-top:12px;"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Lab Test Catalog</h2>
+    <p class="muted">Full catalog management — add, edit, or retire lab tests. A test added here immediately becomes available in Doctor's lab ordering and the Lab walk-in tabs. Prices set here are locked: lab/radiology staff can never override them, and a test with no price cannot be billed.</p>
+
+    <h3>Add New Test</h3>
+    <div class="row">
+      <input id="newTestName" placeholder="Test name *">
+      <select id="newTestCategory">
+        <option value="Hematology">Hematology</option>
+        <option value="Biochemistry">Biochemistry</option>
+        <option value="Special Chemistry">Special Chemistry</option>
+        <option value="Immunology">Immunology</option>
+        <option value="Serology">Serology</option>
+        <option value="Endocrinology">Endocrinology</option>
+        <option value="Radiology">Radiology</option>
+      </select>
+    </div>
+    <div class="row">
+      <input id="newTestUnit" placeholder="Unit (e.g. mg/dL) — optional">
+      <input id="newTestRefLow" type="number" step="0.01" placeholder="Ref. range low">
+      <input id="newTestRefHigh" type="number" step="0.01" placeholder="Ref. range high">
+    </div>
+    <div class="row">
+      <input id="newTestRefText" placeholder="Or a text reference range (e.g. Negative) — used instead of low/high">
+      <input id="newTestPrice" type="number" placeholder="Default price (Rs.) *">
+    </div>
+    <button class="primary" onclick="createTest()">Add Test</button>
+    <div id="newTestMsg"></div>
+
+    <h3 style="margin-top:20px;">Existing Tests</h3>
+    <div class="row">
+      <input id="priceSearch" placeholder="Search test name...">
+    </div>
+    <div id="testPriceTable" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Analyzer Interfacing (Phase 2)</h2>
+    <p class="muted">Connection settings for the three lab analyzers. Nothing an analyzer sends is ever saved to a patient's report automatically — every incoming message lands in Lab's Analyzer Inbox for a technician to review and import. See ANALYZER-INTERFACING.md (in the application folder) for full setup and calibration steps for each device.</p>
+    <div id="analyzerConfigTable"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Pharmacy Stock Adjustment Approvals</h2>
+    <p class="muted">Wastage/damage/expiry/return requests from pharmacy staff. Nothing changes stock until approved here.</p>
+    <div id="adjustmentQueue"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Daily Closing Reports</h2>
+    <div class="row" style="max-width:300px;">
+      <input id="reportDate" type="date">
+      <button class="secondary" onclick="loadDailyReports()">Load</button>
+    </div>
+    <div id="dailyReports" style="margin-top:14px;"></div>
+  </div>
+
+</div>
+<script src="/js/app.js"></script>
+<script>
+let currentStaffId = null;
+
+(async () => {
+  const me = await requireRole(['admin']);
+  currentStaffId = me?.staff_id || null;
+  loadCensus();
+  loadStaff(); loadDoctorDash(); loadRevenue(); loadBackups(); loadAudit();
+  loadTestPrices(); loadAdjustmentQueue(); loadAdminBatches(); loadLowStock();
+  loadAnalyzerConfigTable();
+  document.getElementById('reportDate').value = new Date().toISOString().slice(0, 10);
+  loadDailyReports();
+})();
+
+async function loadLowStock() {
+  const rows = await api('/api/pharmacy/low-stock');
+  const el = document.getElementById('lowStockTable');
+  if (!rows.length) { el.innerHTML = '<p class="muted">Nothing below the low-stock threshold right now.</p>'; return; }
+  el.innerHTML = '<table><tr><th>Drug</th><th>Remaining (units)</th><th>Packs Equivalent</th></tr>' +
+    rows.map(r => `<tr><td>${esc(r.drug_name)}</td><td>${r.total_remaining}</td><td><span class="stock-flag low_stock">${r.packs_remaining.toFixed(1)} packs</span></td></tr>`).join('') + '</table>';
+}
+
+async function loadAdminBatches() {
+  const rows = await api('/api/pharmacy/batches');
+  const el = document.getElementById('adminBatchTable');
+  if (!rows.length) { el.innerHTML = '<p class="muted">No inventory yet.</p>'; return; }
+  el.innerHTML = '<table><tr><th>Drug</th><th>Batch#</th><th>Remaining</th><th>Expiry</th><th>Unit Price</th><th>Status</th><th></th></tr>' +
+    rows.map(b => `<tr>
+      <td>${esc(b.drug_name)}</td><td>${esc(b.batch_number)}</td><td>${b.quantity_remaining}</td>
+      <td>${esc(b.expiry_date||'—')}</td><td>Rs. ${b.selling_price.toFixed(2)}</td>
+      <td>${b.low_stock ? '<span class="stock-flag low_stock">LOW STOCK</span>' : ''}</td>
+      <td><button class="secondary" onclick='editBatch(${JSON.stringify(b)})'>Edit</button>
+          <button class="secondary" onclick="deleteBatch(${b.id}, ${JSON.stringify(b.drug_name)})">Delete</button></td>
+    </tr>`).join('') + '</table>';
+}
+
+async function editBatch(b) {
+  const batch_number = prompt('Batch number:', b.batch_number) ?? b.batch_number;
+  const expiry_date = prompt('Expiry date (YYYY-MM-DD):', b.expiry_date || '') ?? b.expiry_date;
+  const quantity_remaining = prompt('Quantity remaining (units):', b.quantity_remaining);
+  if (quantity_remaining === null) return;
+  const selling_price = prompt('Selling price per unit (Rs.):', b.selling_price) ?? b.selling_price;
+  try {
+    await api(`/api/pharmacy/batches/${b.id}`, { method: 'PUT', body: JSON.stringify({
+      batch_number, expiry_date, quantity_remaining: Number(quantity_remaining), selling_price: Number(selling_price)
+    })});
+    toast('Batch updated.', 'success');
+    loadAdminBatches(); loadLowStock();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function deleteBatch(id, name) {
+  if (!confirm(`Delete this batch of ${name}? This cannot be undone.`)) return;
+  try {
+    await api(`/api/pharmacy/batches/${id}`, { method: 'DELETE' });
+    toast('Batch deleted.', 'success');
+    loadAdminBatches(); loadLowStock();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function loadCensus() {
+  const c = await api('/api/census');
+  document.getElementById('census').innerHTML = `
+    <div class="card" style="flex:1; text-align:center;"><div class="muted">In IPD / Wards</div><div style="font-size:26px; font-weight:700;">${c.ipd}</div></div>
+    <div class="card" style="flex:1; text-align:center;"><div class="muted">Waiting to See Doctor</div><div style="font-size:26px; font-weight:700;">${c.waitingDoctor}</div></div>
+    <div class="card" style="flex:1; text-align:center;"><div class="muted" title="Everyone with an open visit today — includes patients at the lab or pharmacy, not just those still waiting to be seen">In OPD (Clinic) — all stages</div><div style="font-size:26px; font-weight:700;">${c.opd}</div></div>
+    <div class="card" style="flex:1; text-align:center;"><div class="muted">In Laboratory</div><div style="font-size:26px; font-weight:700;">${c.lab}</div></div>
+    <div class="card" style="flex:1; text-align:center; background:var(--navy); color:#fff;"><div>Total Active</div><div style="font-size:26px; font-weight:700;">${c.total}</div></div>
+  `;
+}
+
+let allTests = [];
+async function loadTestPrices() {
+  allTests = await api('/api/tests/all');
+  renderTestPrices();
+  document.getElementById('priceSearch').addEventListener('input', renderTestPrices);
+}
+
+function renderTestPrices() {
+  const q = document.getElementById('priceSearch').value.trim().toLowerCase();
+  const rows = allTests.filter(t => t.name.toLowerCase().includes(q));
+  const el = document.getElementById('testPriceTable');
+  el.innerHTML = '<table><tr><th>Test</th><th>Category</th><th>Ref. Range</th><th>Price</th><th>Status</th><th></th></tr>' +
+    rows.map(t => `<tr ${t.active ? '' : 'style="opacity:0.5;"'}>
+      <td>${esc(t.name)}</td><td>${esc(t.category)}</td>
+      <td class="muted">${t.ref_text ? esc(t.ref_text) : (t.ref_low != null && t.ref_high != null ? `${t.ref_low}–${t.ref_high} ${esc(t.unit||'')}` : '—')}</td>
+      <td>${t.default_price > 0 ? 'Rs. ' + t.default_price : '<span style="color:var(--danger);">Not set</span>'}</td>
+      <td>${t.active ? '<span class="badge done">Active</span>' : '<span class="badge wait">Retired</span>'}</td>
+      <td>
+        <button class="secondary" onclick='editTest(${JSON.stringify(t)})'>Edit</button>
+        <button class="secondary" onclick='manageRanges(${JSON.stringify(t.name)})'>Ranges</button>
+        ${t.active
+          ? `<button class="secondary" onclick="deactivateTest(${JSON.stringify(t.name)})">Retire</button>`
+          : `<button class="secondary" onclick="reactivateTest(${JSON.stringify(t.name)})">Reactivate</button>`}
+      </td>
+    </tr>`).join('') + '</table>';
+}
+
+// ===== Age/sex-stratified reference range bands =====
+// A test's tests_master row (or a panel's own component list) carries one
+// default range; some tests need more than that — FSH pre/post-menopausal,
+// pediatric vs adult TSH, etc. Bands added here are resolved automatically at
+// result-entry time by the most specific match (exact sex beats ANY, narrower
+// age window beats wider); no band at all just falls back to the test's own
+// default range, so nothing here is required for a test to work.
+let rangesTestName = null;
+async function manageRanges(testName) {
+  rangesTestName = testName;
+  document.getElementById('rangesModalTitle').textContent = `Reference Range Bands — ${testName}`;
+  const t = allTests.find(x => x.name === testName);
+  const compNames = t && t.components ? t.components.map(c => c.name) : [];
+  document.getElementById('rangeComponent').innerHTML = '<option value="">(applies to the whole test)</option>' +
+    compNames.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  document.getElementById('rangesModal').style.display = 'flex';
+  await loadRangeBands();
+}
+
+function closeRangesModal() {
+  document.getElementById('rangesModal').style.display = 'none';
+  rangesTestName = null;
+}
+
+async function loadRangeBands() {
+  const rows = await api(`/api/reference-ranges?test=${encodeURIComponent(rangesTestName)}`);
+  const el = document.getElementById('rangeBandsTable');
+  if (!rows.length) { el.innerHTML = '<p class="muted">No stratified bands defined — this test uses its single default range for every patient.</p>'; return; }
+  el.innerHTML = '<table><tr><th>Component</th><th>Sex</th><th>Age (yrs)</th><th>Range</th><th>Label</th><th></th></tr>' +
+    rows.map(r => `<tr>
+      <td>${esc(r.component_name || '(whole test)')}</td>
+      <td>${esc(r.sex)}</td>
+      <td>${r.age_min_years}–${r.age_max_years}</td>
+      <td class="muted">${r.ref_text ? esc(r.ref_text) : `${r.ref_low ?? ''}–${r.ref_high ?? ''} ${esc(r.unit||'')}`}</td>
+      <td class="muted">${esc(r.label || '')}</td>
+      <td><button class="secondary" onclick="deleteRangeBand(${r.id})">Remove</button></td>
+    </tr>`).join('') + '</table>';
+}
+
+async function addRangeBand() {
+  const msg = document.getElementById('rangeBandMsg');
+  msg.className = ''; msg.textContent = '';
+  const body = {
+    test_name: rangesTestName,
+    component_name: document.getElementById('rangeComponent').value || null,
+    sex: document.getElementById('rangeSex').value,
+    age_min_years: document.getElementById('rangeAgeMin').value || 0,
+    age_max_years: document.getElementById('rangeAgeMax').value || 150,
+    unit: document.getElementById('rangeUnit').value,
+    ref_low: document.getElementById('rangeLow').value,
+    ref_high: document.getElementById('rangeHigh').value,
+    ref_text: document.getElementById('rangeText').value,
+    label: document.getElementById('rangeLabel').value
+  };
+  try {
+    await api('/api/reference-ranges', { method: 'POST', body: JSON.stringify(body) });
+    ['rangeAgeMin','rangeAgeMax','rangeUnit','rangeLow','rangeHigh','rangeText','rangeLabel'].forEach(id => document.getElementById(id).value = '');
+    await loadRangeBands();
+  } catch (ex) { msg.className = 'error'; msg.textContent = ex.message; }
+}
+
+async function deleteRangeBand(id) {
+  if (!confirm('Remove this reference range band?')) return;
+  try {
+    await api(`/api/reference-ranges/${id}`, { method: 'DELETE' });
+    await loadRangeBands();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function createTest() {
+  const msg = document.getElementById('newTestMsg');
+  msg.className = ''; msg.textContent = '';
+  const name = document.getElementById('newTestName').value.trim();
+  const price = document.getElementById('newTestPrice').value;
+  if (!name) { msg.className = 'error'; msg.textContent = 'Test name is required.'; return; }
+  if (!price || Number(price) <= 0) { msg.className = 'error'; msg.textContent = 'A default price is required.'; return; }
+  try {
+    await api('/api/tests', { method: 'POST', body: JSON.stringify({
+      name, category: document.getElementById('newTestCategory').value,
+      unit: document.getElementById('newTestUnit').value,
+      ref_low: document.getElementById('newTestRefLow').value,
+      ref_high: document.getElementById('newTestRefHigh').value,
+      ref_text: document.getElementById('newTestRefText').value,
+      default_price: price
+    })});
+    msg.className = 'success'; msg.textContent = `${name} added — available immediately in Doctor and Lab ordering.`;
+    ['newTestName','newTestUnit','newTestRefLow','newTestRefHigh','newTestRefText','newTestPrice'].forEach(id => document.getElementById(id).value = '');
+    loadTestPrices();
+  } catch (ex) { msg.className = 'error'; msg.textContent = ex.message; }
+}
+
+async function editTest(t) {
+  const category = prompt('Category (Hematology / Biochemistry / Special Chemistry / Immunology / Serology / Endocrinology / Radiology):', t.category) ?? t.category;
+  const unit = prompt('Unit:', t.unit || '') ?? t.unit;
+  const ref_low = prompt('Reference range — low:', t.ref_low ?? '') ?? t.ref_low;
+  const ref_high = prompt('Reference range — high:', t.ref_high ?? '') ?? t.ref_high;
+  const ref_text = prompt('Or a text reference range (leave blank if using low/high):', t.ref_text || '') ?? t.ref_text;
+  const default_price = prompt('Default price (Rs.):', t.default_price);
+  if (default_price === null) return;
+  try {
+    await api(`/api/tests/${encodeURIComponent(t.name)}/full`, { method: 'PUT', body: JSON.stringify({
+      category, unit, ref_low, ref_high, ref_text, default_price: Number(default_price)
+    })});
+    toast(`${t.name} updated.`, 'success');
+    loadTestPrices();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function deactivateTest(name) {
+  if (!confirm(`Retire "${name}"? It will stop appearing in ordering everywhere, but past reports referencing it are unaffected.`)) return;
+  try {
+    await api(`/api/tests/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    toast(`${name} retired.`, 'success');
+    loadTestPrices();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function reactivateTest(name) {
+  try {
+    await api(`/api/tests/${encodeURIComponent(name)}/activate`, { method: 'POST' });
+    toast(`${name} reactivated — available again in ordering.`, 'success');
+    loadTestPrices();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function loadAdjustmentQueue() {
+  const rows = await api('/api/pharmacy/adjustments?status=pending');
+  const el = document.getElementById('adjustmentQueue');
+  el.innerHTML = rows.length ? ('<table><tr><th>Drug</th><th>Type</th><th>Qty</th><th>Reason</th><th>Requested By</th><th></th></tr>' +
+    rows.map(a => `<tr>
+      <td>${esc(a.drug_name)}</td><td>${esc(a.adjustment_type)}</td><td>${a.qty}</td><td>${esc(a.reason)}</td><td>${esc(a.requested_by)}</td>
+      <td><button class="secondary" onclick="approveAdjustment(${a.id})">Approve</button>
+          <button class="secondary" onclick="rejectAdjustment(${a.id})">Reject</button></td>
+    </tr>`).join('') + '</table>') : '<p class="muted">Nothing pending.</p>';
+}
+
+async function approveAdjustment(id) {
+  if (!confirm('Approve this stock adjustment? This will reduce inventory and cannot be undone.')) return;
+  await api(`/api/pharmacy/adjustments/${id}/approve`, { method: 'POST' });
+  loadAdjustmentQueue();
+}
+async function rejectAdjustment(id) {
+  await api(`/api/pharmacy/adjustments/${id}/reject`, { method: 'POST' });
+  loadAdjustmentQueue();
+}
+
+async function loadDailyReports() {
+  const date = document.getElementById('reportDate').value;
+  if (!date) { toast('Pick a date first.', 'error'); return; }
+  const el = document.getElementById('dailyReports');
+  el.innerHTML = '<p class="muted">Loading…</p>';
+  try {
+    const [lab, pharm] = await Promise.all([
+      api('/api/reports/lab-daily?date=' + date),
+      api('/api/reports/pharmacy-daily?date=' + date)
+    ]);
+    lastDailyReport = { lab, pharm };
+    el.innerHTML = `
+      <h3>Laboratory Daily Closing — ${esc(lab.date)}</h3>
+      <p>Total tests conducted: <strong>${lab.totalTests}</strong> &nbsp; Total revenue: <strong>Rs. ${lab.totalRevenue.toLocaleString()}</strong></p>
+      ${lab.rows.length ? `<table><tr><th>Patient</th><th>MR#</th><th>Test(s)</th><th>Fee</th><th>Entered By</th></tr>
+        ${lab.rows.map(r => `<tr><td>${esc(r.patient_name)}</td><td>${esc(r.mr_number)}</td><td>${esc(r.tests)}</td><td>Rs. ${r.payment_amount}</td><td>${esc(r.entered_by)}</td></tr>`).join('')}
+      </table>` : '<p class="muted">No tests completed this date.</p>'}
+
+      <h3 style="margin-top:20px;">Pharmacy Daily Closing — ${esc(pharm.date)}</h3>
+      <table>
+        <tr><td>Purchases (new stock received today, ${pharm.purchases.batchesAdded} batches)</td><td>Rs. ${pharm.purchases.total.toLocaleString()}</td></tr>
+        <tr><td>Gross Sales (${pharm.saleCount} sales)</td><td>Rs. ${pharm.grossSales.toLocaleString()}</td></tr>
+        <tr><td>Medicine Returns / Refunds (${pharm.returnCount} returns)</td><td>- Rs. ${pharm.totalRefunds.toLocaleString()}</td></tr>
+        <tr><td>Net Sales (after refunds)</td><td>Rs. ${pharm.netSales.toLocaleString()}</td></tr>
+        <tr><td>Cost of Goods Sold (net of returned stock)</td><td>Rs. ${pharm.adjustedCogs.toLocaleString()}</td></tr>
+        <tr style="font-weight:700;"><td>Net Profit</td><td>Rs. ${pharm.netProfit.toLocaleString()}</td></tr>
+      </table>
+
+      ${pharm.purchases.details.length ? `
+        <h3 style="margin-top:20px;">Distributor Purchases — ${esc(pharm.date)}</h3>
+        <table><tr><th>Distributor</th><th>Invoice #</th><th>Medicine</th><th>Qty (units)</th><th>Purchase Date</th><th>Total Cost</th></tr>
+          ${pharm.purchases.details.map(p => `<tr><td>${esc(p.distributor_name||'—')}</td><td>${esc(p.invoice_number||'—')}</td><td>${esc(p.drug_name)}</td><td>${p.quantity}</td><td>${esc(p.purchase_date)}</td><td>Rs. ${p.total_cost.toLocaleString()}</td></tr>`).join('')}
+        </table>` : ''}
+
+      ${pharm.returns.length ? `
+        <h3 style="margin-top:20px;">Medicine Returns — ${esc(pharm.date)}</h3>
+        <table><tr><th>Return #</th><th>Medicine</th><th>Qty</th><th>Refund</th><th>Original Receipt</th><th>Processed By</th></tr>
+          ${pharm.returns.map(r => `<tr><td>${esc(r.return_no)}</td><td>${esc(r.drug_name)}</td><td>${r.qty}</td><td>Rs. ${r.refund_amount.toLocaleString()}</td><td>${esc(r.original_receipt_no)}</td><td>${esc(r.processed_by)}</td></tr>`).join('')}
+        </table>` : ''}
+
+      <button class="secondary no-print" style="margin-top:14px;" onclick="printDailyClosingReport()">Print Owner Daily Receipt</button>
+    `;
+  } catch (ex) {
+    el.innerHTML = `<p class="error">Could not load the report: ${esc(ex.message)}</p>`;
+    toast(ex.message, 'error');
+  }
+}
+
+let lastDailyReport = null;
+
+// Routed through the shared decoupled print system (thermal, with the standard
+// hospital header/footer) instead of raw window.print() — the old version tried
+// to print the on-screen page directly, which is wrapped in a "no-print" card
+// and so printed nothing.
+function printDailyClosingReport() {
+  if (!lastDailyReport) return;
+  const { lab, pharm } = lastDailyReport;
+  const items = [
+    { label: `Laboratory Revenue (${lab.totalTests} tests)`, amount: lab.totalRevenue },
+    { label: `Pharmacy Gross Sales (${pharm.saleCount} sales)`, amount: pharm.grossSales },
+    { label: `Pharmacy Returns / Refunds (${pharm.returnCount})`, amount: -pharm.totalRefunds },
+    { label: `Pharmacy Purchases (${pharm.purchases.batchesAdded} batches)`, amount: pharm.purchases.total },
+    { label: 'Pharmacy Cost of Goods Sold (net of returns)', amount: pharm.adjustedCogs },
+    { label: 'Pharmacy Net Profit', amount: pharm.netProfit }
+  ];
+  const html = buildReceiptHTML({
+    title: 'DAILY CLOSING REPORT',
+    meta: [{ label: 'Date', value: lab.date }],
+    items,
+    total: lab.totalRevenue + pharm.netSales,
+    footerNote: 'Combined Laboratory + Pharmacy closing summary'
+  });
+  printDocument(html, 'thermal');
+}
+
+async function loadStaff() {
+  const rows = await api('/api/staff');
+  document.getElementById('staffTable').innerHTML = '<table><tr><th>Staff ID</th><th>Name</th><th>Role</th><th>Status</th><th></th></tr>' +
+    rows.map(s => {
+      const isSelf = s.staff_id === currentStaffId;
+      return `<tr><td>${esc(s.staff_id)}</td><td>${esc(s.name)}</td><td>${esc(s.role)}</td>
+      <td>${s.active ? 'Active' : 'Disabled'}</td>
+      <td>
+        <button class="secondary" onclick="toggleStaff('${esc(s.staff_id)}')">${s.active ? 'Disable' : 'Enable'}</button>
+        ${isSelf
+          ? `<button class="secondary" disabled title="You can't delete the account you're logged in as">Delete</button>`
+          : `<button class="secondary" onclick="deleteStaff('${esc(s.staff_id)}', '${esc(s.name)}')">Delete</button>`}
+      </td></tr>`;
+    }).join('') + '</table>';
+}
+
+async function addStaff() {
+  const msg = document.getElementById('staffMsg');
+  try {
+    await api('/api/staff', { method: 'POST', body: JSON.stringify({
+      staff_id: s_id.value.trim(), name: s_name.value.trim(), role: s_role.value, password: s_pass.value
+    })});
+    msg.className = 'success'; msg.textContent = 'Account created.';
+    s_id.value = ''; s_name.value = ''; s_pass.value = '';
+    loadStaff();
+  } catch (ex) { msg.className = 'error'; msg.textContent = ex.message; }
+}
+
+async function toggleStaff(id) {
+  await api(`/api/staff/${encodeURIComponent(id)}/toggle`, { method: 'POST' });
+  loadStaff();
+}
+
+// Permanent removal — separate from Disable, which just blocks login while
+// keeping the account (and its history) on file. Past records (receipts,
+// orders, audit entries) that reference this staff_id by name/text are
+// untouched either way; only the login account itself is removed.
+async function deleteStaff(id, name) {
+  if (!confirm(`Permanently delete the account "${id}" (${name})? This cannot be undone. Their past records stay on file, but they will no longer be able to log in and the account itself is gone. If you only want to block login, use Disable instead.`)) return;
+  try {
+    await api(`/api/staff/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    toast(`${id} deleted.`, 'success');
+    loadStaff();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function loadDoctorDash() {
+  const rows = await api('/api/dashboard/doctors');
+  const el = document.getElementById('doctorDash');
+  if (!rows.length) { el.innerHTML = '<p class="muted">No doctors registered yet.</p>'; return; }
+  el.innerHTML = '<table><tr><th>Doctor</th><th>Patients Today</th><th>Total Patients Seen</th><th>Active Inpatients</th></tr>' +
+    rows.map(r => `<tr><td>${esc(r.name)} (${esc(r.staff_id)})</td><td>${r.patients_today}</td><td>${r.total_patients_seen}</td><td>${r.active_inpatients}</td></tr>`).join('') + '</table>';
+}
+
+async function loadRevenue() {
+  const range = document.getElementById('revRange').value;
+  const d = await api('/api/dashboard/revenue?range=' + range);
+  const el = document.getElementById('revenue');
+  const row = (label, obj) => `<tr><td>${label}</td><td>${obj.c}</td><td>Rs. ${obj.total.toLocaleString()}</td></tr>`;
+  el.innerHTML = `
+    <table>
+      <tr><th>Category</th><th>Count</th><th>Amount</th></tr>
+      ${row('Outpatient (consultations)', d.outpatient)}
+      ${row('Inpatient (ward/discharge)', d.inpatient)}
+      ${row('Laboratory', d.lab)}
+      ${row('Radiology', d.radiology)}
+      ${row('Pharmacy', d.pharmacy)}
+      ${row('Procedures / OR (all types)', d.procedures)}
+      <tr style="font-weight:700;"><td>Total</td><td></td><td>Rs. ${d.grandTotal.toLocaleString()}</td></tr>
+    </table>
+    ${d.proceduresByType.length ? `
+      <h3 style="margin-top:16px;">Procedures / OR Breakdown</h3>
+      <table><tr><th>Type</th><th>Count</th><th>Amount</th></tr>
+        ${d.proceduresByType.map(p => `<tr><td>${esc(p.procedure_type)}</td><td>${p.c}</td><td>Rs. ${p.total.toLocaleString()}</td></tr>`).join('')}
+      </table>` : ''}
+  `;
+}
+
+let lastBackupRows = [];
+
+async function loadBackups() {
+  const rows = await api('/api/admin/backups');
+  lastBackupRows = rows;
+  const el = document.getElementById('backupList');
+  el.innerHTML = rows.length ? ('<table><tr><th>File</th><th>Size</th><th>Created</th><th></th></tr>' +
+    rows.map(b => `<tr><td>${esc(b.name)}</td><td>${(b.size/1024).toFixed(0)} KB</td><td>${esc(b.created_at)}</td>
+      <td><button class="secondary" onclick="downloadBackup('${esc(b.name)}')">Download</button></td></tr>`).join('') + '</table>') :
+    '<p class="muted">No backups yet.</p>';
+  maybeShowBackupReminder(rows);
+}
+
+// Streams the backup file through fetch (rather than a plain link) so the
+// session cookie is sent the same way every other API call sends it, and so
+// the button gives immediate error feedback if the download fails instead of
+// silently navigating nowhere.
+async function downloadBackup(filename) {
+  try {
+    const res = await fetch(`/api/admin/backups/${encodeURIComponent(filename)}/download`, { credentials: 'same-origin' });
+    if (!res.ok) { const body = await res.json().catch(() => ({})); throw new Error(body.error || 'Download failed'); }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    toast('Backup downloaded — now save it to a USB drive, another computer, or cloud storage.', 'success');
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+// ---- Backup reminder pop-up ----
+// Shown once per calendar day (dismiss is remembered in this browser only) when
+// either no backup exists yet, or the newest one is more than 24 hours old.
+// This is the actual "get a copy off this PC" nudge — the daily automatic
+// backup above only protects against a bad write, not against losing the PC.
+const BACKUP_REMINDER_KEY = 'alnoor_backup_reminder_dismissed_on';
+
+function maybeShowBackupReminder(rows) {
+  const today = new Date().toISOString().slice(0, 10);
+  let dismissedOn = null;
+  try { dismissedOn = localStorage.getItem(BACKUP_REMINDER_KEY); } catch { /* private browsing etc. — just show it */ }
+  if (dismissedOn === today) return;
+
+  const newest = rows[0]; // loadBackups()/listBackups() already sort newest-first
+  const ageHours = newest ? (Date.now() - new Date(newest.created_at).getTime()) / 3600000 : Infinity;
+  if (newest && ageHours < 24) return; // recent enough — nothing to nag about today
+
+  const text = document.getElementById('backupReminderText');
+  text.textContent = newest
+    ? `Your most recent backup was created ${Math.floor(ageHours)} hour(s) ago and is still only stored on this computer.`
+    : 'No backup has been created yet — everything currently exists only on this computer.';
+  document.getElementById('backupReminderModal').style.display = 'flex';
+}
+
+function dismissBackupReminder() {
+  try { localStorage.setItem(BACKUP_REMINDER_KEY, new Date().toISOString().slice(0, 10)); } catch { /* ignore */ }
+  document.getElementById('backupReminderModal').style.display = 'none';
+}
+
+async function downloadLatestBackupFromReminder() {
+  // If a backup already exists, download the newest one as-is; otherwise make
+  // one first so there's actually something to download.
+  if (!lastBackupRows.length) await runBackupNow();
+  if (lastBackupRows.length) await downloadBackup(lastBackupRows[0].name);
+  dismissBackupReminder();
+}
+
+async function runBackupNow() {
+  const out = await api('/api/admin/backups/run', { method: 'POST' });
+  document.getElementById('backupMsg').textContent = 'Backup created: ' + out.file;
+  loadBackups();
+}
+
+async function loadAudit() {
+  const mr = document.getElementById('auditMr').value.trim();
+  const rows = await api('/api/audit' + (mr ? '?mr=' + encodeURIComponent(mr) : ''));
+  const el = document.getElementById('auditTable');
+  el.innerHTML = rows.length ? ('<table><tr><th>When</th><th>Staff</th><th>Action</th><th>MR#</th></tr>' +
+    rows.map(a => `<tr><td>${esc(a.created_at)}</td><td>${esc(a.staff_id)}</td><td>${esc(a.action)}</td><td>${esc(a.mr_number||'—')}</td></tr>`).join('') + '</table>') :
+    '<p class="muted">No entries.</p>';
+}
+
+// ===== Analyzer Interfacing (Phase 2) =====
+let analyzerConfigs = [];
+let currentAnalyzerKey = null;
+
+const ANALYZER_FIELD_SPECS = {
+  tcp_server: [
+    { key: 'port', label: 'Port (the analyzer\'s network/LIS settings must point at this PC\'s IP and this port)', type: 'number', placeholder: '6661' }
+  ],
+  serial: [
+    { key: 'comPort', label: 'COM Port (check Windows Device Manager)', type: 'text', placeholder: 'COM3' },
+    { key: 'baudRate', label: 'Baud Rate', type: 'number', placeholder: '9600' },
+    { key: 'parity', label: 'Parity', type: 'select', options: ['None', 'Even', 'Odd', 'Mark', 'Space'] },
+    { key: 'dataBits', label: 'Data Bits', type: 'number', placeholder: '8' },
+    { key: 'stopBits', label: 'Stop Bits', type: 'select', options: ['1', '1.5', '2'] }
+  ],
+  file_watch: [
+    { key: 'watchFolder', label: 'Folder to watch (where the analyzer\'s PC software exports result files)', type: 'text', placeholder: 'C:\\iChromaExports' },
+    { key: 'filePattern', label: 'File pattern', type: 'text', placeholder: '*.csv' },
+    { key: 'delimiter', label: 'Delimiter', type: 'select', options: ['auto', ',', '\t', ';', '|'] },
+    { key: 'hasHeaderRow', label: 'First row is a header row', type: 'checkbox' }
+  ]
+};
+
+async function loadAnalyzerConfigTable() {
+  analyzerConfigs = await api('/api/analyzers/config');
+  const el = document.getElementById('analyzerConfigTable');
+  el.innerHTML = '<table><tr><th>Analyzer</th><th>Connection</th><th>Enabled</th><th>Live Status</th><th></th></tr>' +
+    analyzerConfigs.map(a => `<tr>
+      <td>${esc(a.display_name)}</td>
+      <td class="muted">${esc(a.connection_type)}</td>
+      <td>${a.enabled ? '<span class="badge done">Enabled</span>' : '<span class="muted">Disabled</span>'}</td>
+      <td>${a.running ? '<span class="badge done">Running</span>' : `<span class="muted">Not running${a.reason ? ' (' + esc(a.reason) + ')' : ''}</span>`}</td>
+      <td><button class="secondary" onclick="openAnalyzerModal('${esc(a.analyzer_key)}')">Configure</button></td>
+    </tr>`).join('') + '</table>';
+}
+
+function analyzerFieldHtml(spec, value) {
+  const id = 'azField_' + spec.key;
+  if (spec.type === 'select') {
+    return `<label>${esc(spec.label)}</label><select id="${id}">${spec.options.map(o => `<option value="${esc(o)}" ${String(value) === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+  }
+  if (spec.type === 'checkbox') {
+    return `<label><input type="checkbox" id="${id}" ${value ? 'checked' : ''}> ${esc(spec.label)}</label>`;
+  }
+  return `<label>${esc(spec.label)}</label><input id="${id}" type="${spec.type}" value="${esc(value ?? '')}" placeholder="${esc(spec.placeholder || '')}">`;
+}
+
+async function openAnalyzerModal(key) {
+  currentAnalyzerKey = key;
+  const a = analyzerConfigs.find(x => x.analyzer_key === key);
+  document.getElementById('analyzerModalTitle').textContent = 'Configure — ' + a.display_name;
+  document.getElementById('azEnabled').checked = !!a.enabled;
+  const specs = ANALYZER_FIELD_SPECS[a.connection_type] || [];
+  document.getElementById('azConfigFields').innerHTML = specs.map(spec => `<div class="row">${analyzerFieldHtml(spec, a.config[spec.key])}</div>`).join('');
+  document.getElementById('azConfigMsg').innerHTML = '';
+  document.getElementById('analyzerModal').style.display = 'flex';
+  loadAnalyzerTestMap(key);
+  loadAnalyzerLogs(key);
+}
+
+function closeAnalyzerModal() {
+  document.getElementById('analyzerModal').style.display = 'none';
+  currentAnalyzerKey = null;
+}
+
+async function saveAnalyzerConfig() {
+  const a = analyzerConfigs.find(x => x.analyzer_key === currentAnalyzerKey);
+  const specs = ANALYZER_FIELD_SPECS[a.connection_type] || [];
+  const config = {};
+  specs.forEach(spec => {
+    const el = document.getElementById('azField_' + spec.key);
+    if (spec.type === 'checkbox') config[spec.key] = el.checked;
+    else if (spec.type === 'number') config[spec.key] = Number(el.value);
+    else config[spec.key] = el.value;
+  });
+  try {
+    await api(`/api/analyzers/config/${currentAnalyzerKey}`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled: document.getElementById('azEnabled').checked, config })
+    });
+    document.getElementById('azConfigMsg').innerHTML = '<p class="success">Saved. The bridge restarts automatically with these settings.</p>';
+    loadAnalyzerConfigTable();
+    loadAnalyzerLogs(currentAnalyzerKey);
+  } catch (ex) {
+    document.getElementById('azConfigMsg').innerHTML = `<p class="error">${esc(ex.message)}</p>`;
+  }
+}
+
+async function loadAnalyzerTestMap(key) {
+  const rows = await api(`/api/analyzers/${key}/test-map`);
+  const el = document.getElementById('azTestMapTable');
+  el.innerHTML = rows.length
+    ? '<table><tr><th>Analyzer Code</th><th>Our Test</th><th>Component</th><th></th></tr>' +
+      rows.map(m => `<tr><td>${esc(m.source_code)}</td><td>${esc(m.target_test_name)}</td><td>${esc(m.target_component_name || '—')}</td>
+        <td><button class="secondary" onclick="deleteAnalyzerTestMap(${m.id})">Remove</button></td></tr>`).join('') + '</table>'
+    : '<p class="muted">No mappings yet — add one below once you\'ve seen a real code come in through Lab\'s Analyzer Inbox.</p>';
+}
+
+async function addAnalyzerTestMap() {
+  const source_code = document.getElementById('azMapSourceCode').value.trim();
+  const target_test_name = document.getElementById('azMapTargetTest').value.trim();
+  const target_component_name = document.getElementById('azMapTargetComponent').value.trim();
+  if (!source_code || !target_test_name) { toast('Both the analyzer code and our test name are required.', 'error'); return; }
+  try {
+    await api(`/api/analyzers/${currentAnalyzerKey}/test-map`, {
+      method: 'POST',
+      body: JSON.stringify({ source_code, target_test_name, target_component_name: target_component_name || null })
+    });
+    document.getElementById('azMapSourceCode').value = '';
+    document.getElementById('azMapTargetTest').value = '';
+    document.getElementById('azMapTargetComponent').value = '';
+    loadAnalyzerTestMap(currentAnalyzerKey);
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function deleteAnalyzerTestMap(id) {
+  await api(`/api/analyzers/test-map/${id}`, { method: 'DELETE' });
+  loadAnalyzerTestMap(currentAnalyzerKey);
+}
+
+async function loadAnalyzerLogs(key) {
+  const rows = await api(`/api/analyzers/config/${key}/logs`);
+  const el = document.getElementById('azLogs');
+  el.innerHTML = rows.length
+    ? rows.slice().reverse().map(l => `<div>[${esc(l.at)}] ${esc(l.message)}</div>`).join('')
+    : '<div class="muted">No activity yet.</div>';
+}
+</script>
+</body>
+</html>

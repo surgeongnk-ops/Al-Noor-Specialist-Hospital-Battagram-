@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Al Noor Clinic System — Login</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="wrap" style="max-width:380px; margin-top:80px;">
+  <div class="card">
+    <h2 style="text-align:center; color:var(--navy); font-size:20px;">Al Noor Specialist Hospital</h2>
+    <p class="muted" style="text-align:center; margin-top:-8px;">Internal clinic system — staff login</p>
+    <form id="loginForm">
+      <label>Staff ID</label>
+      <input type="text" id="staff_id" autocomplete="username" required>
+      <label>Password</label>
+      <input type="password" id="password" autocomplete="current-password" required>
+      <button class="primary" style="width:100%;" type="submit">Log in</button>
+      <div id="err" class="error"></div>
+    </form>
+  </div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const staff_id = document.getElementById('staff_id').value.trim();
+  const password = document.getElementById('password').value;
+  const err = document.getElementById('err');
+  err.textContent = '';
+  try {
+    const me = await api('/api/login', { method: 'POST', body: JSON.stringify({ staff_id, password }) });
+    const dest = {
+      admin: '/admin.html', reception: '/reception.html', doctor: '/doctor.html', lab: '/lab.html',
+      phlebotomist: '/lab.html', pathologist: '/lab.html',
+      pharmacy: '/pharmacy.html', radiographer: '/radiology.html', or_manager: '/or.html', nurse: '/nursing.html'
+    }[me.role] || '/';
+    window.location.href = dest;
+  } catch (ex) {
+    err.textContent = ex.message;
+  }
+});
+</script>
+</body>
+</html>

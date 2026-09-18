@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><title>Doctor — Al Noor Clinic</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="topbar no-print">
+  <h1>Doctor</h1>
+  <div><span class="who" data-who></span> &nbsp; <button onclick="logout()">Log out</button></div>
+</div>
+<div class="wrap">
+
+  <div class="card no-print">
+    <h2>Hospital Census</h2>
+    <div id="census" class="row"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Official Certificates</h2>
+    <div class="nav-tiles">
+      <a href="/birth-certificate.html">Birth Certificate</a>
+      <a href="/discharge-certificate.html">Discharge Certificate</a>
+      <a href="/death-certificate.html">Death Certificate</a>
+    </div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Search Patients (MR Number, Name, or Phone)</h2>
+    <div class="row">
+      <input id="globalSearch" placeholder="Search...">
+      <button class="secondary" onclick="doGlobalSearch()">Search</button>
+    </div>
+    <div id="globalSearchResults" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Lab / Radiology Results Ready — Re-examination Queue</h2>
+    <div id="resultsReady"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>New Patient Queue</h2>
+    <div id="queue"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card no-print" id="detailCard" style="display:none;">
+    <h2 id="detailTitle"></h2>
+    <div id="detailBody"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Inpatients — Add Doctor Orders</h2>
+    <div id="inpatients"><p class="muted">Loading…</p></div>
+  </div>
+</div>
+<script src="/js/app.js"></script>
+<script>
+let me;
+let selectedTests = [];
+let selectedRad = [];
+let currentVisitMr = null;
+
+(async () => {
+  me = await requireRole(['doctor','admin']);
+  loadCensus(); loadQueue(); loadResultsReady(); loadInpatients();
+})();
+
+async function loadCensus() {
+  const c = await api('/api/census');
+  document.getElementById('census').innerHTML = `
+    <div class="card" style="flex:1; text-align:center;"><div class="muted">In IPD / Wards</div><div style="font-size:26px; font-weight:700;">${c.ipd}</div></div>
+    <div class="card" style="flex:1; text-align:center;"><div class="muted">Waiting to See Doctor</div><div style="font-size:26px; font-weight:700;">${c.waitingDoctor}</div></div>
+    <div class="card" style="flex:1; text-align:center;"><div class="muted" title="Everyone with an open visit today — includes patients at the lab or pharmacy, not just those still waiting to be seen">In OPD (Clinic) — all stages</div><div style="font-size:26px; font-weight:700;">${c.opd}</div></div>
+    <div class="card" style="flex:1; text-align:center;"><div class="muted">In Laboratory</div><div style="font-size:26px; font-weight:700;">${c.lab}</div></div>
+    <div class="card" style="flex:1; text-align:center; background:var(--navy); color:#fff;"><div>Total Active</div><div style="font-size:26px; font-weight:700;">${c.total}</div></div>
+  `;
+}
+
+// ===== Global patient search & pull =====
+async function doGlobalSearch() {
+  const q = document.getElementById('globalSearch').value.trim();
+  const el = document.getElementById('globalSearchResults');
+  if (!q) { el.innerHTML = ''; return; }
+  const results = await api('/api/patients/search?q=' + encodeURIComponent(q));
+  if (!results.length) { el.innerHTML = '<p class="muted">No matches.</p>'; return; }
+  el.innerHTML = '<table><tr><th>MR#</th><th>Name</th><th>Phone</th><th></th></tr>' +
+    results.map(p => `<tr><td>${esc(p.mr_number)}</td><td>${esc(p.name)}</td><td>${esc(p.phone)}</td>
+      <td><button class="secondary" onclick="pullPatient('${esc(p.mr_number)}')">Open History</button></td></tr>`).join('') + '</table>';
+}
+
+async function pullPatient(mr) {
+  const { patient, visits } = await api('/api/patients/' + encodeURIComponent(mr) + '/record');
+  const el = document.getElementById('globalSearchResults');
+  const openVisits = visits.filter(v => v.status !== 'closed');
+  el.innerHTML = `
+    <div class="card">
+      <h3>${esc(patient.name)} (${esc(patient.mr_number)}) — ${esc(patient.age||'')} ${esc(patient.gender||'')}</h3>
+      ${openVisits.length
+        ? openVisits.map(v => `<p>Visit from ${esc(v.created_at)} — <span class="badge wait">${esc(v.status)}</span>
+            <button class="secondary" onclick="openVisit(${v.id}, '${esc(mr)}', '${esc(patient.name)}')">Open This Visit</button></p>`).join('')
+        : `<p class="muted">No open visit right now. Ask reception to start a new visit before you can add orders or a prescription.</p>`}
+      <p><a href="/patient-record.html?mr=${encodeURIComponent(mr)}" target="_blank">View full history (all past visits) →</a></p>
+    </div>`;
+}
+
+// ===== Results-ready queue (the bug fix: returning patients with lab/radiology done) =====
+async function loadResultsReady() {
+  const rows = await api('/api/visits/results-ready');
+  const el = document.getElementById('resultsReady');
+  if (!rows.length) { el.innerHTML = '<p class="muted">No patients waiting on review right now.</p>'; return; }
+  el.innerHTML = '<table><tr><th>MR#</th><th>Name</th><th>Age/Gender</th><th>Results Ready Since</th><th></th></tr>' +
+    rows.map(v => `<tr><td>${esc(v.mr_number)}</td><td>${esc(v.patient_name)}</td><td>${esc(v.age)} ${esc(v.gender)}</td>
+      <td>${esc(v.results_ready_at)}</td><td><button class="primary" onclick="openVisit(${v.id}, '${esc(v.mr_number)}', '${esc(v.patient_name)}')">Review</button></td></tr>`).join('') + '</table>';
+}
+
+// ===== Inpatients (unchanged from before) =====
+async function loadInpatients() {
+  const rows = await api('/api/admissions?status=active');
+  const el = document.getElementById('inpatients');
+  if (!rows.length) { el.innerHTML = '<p class="muted">No active inpatients.</p>'; return; }
+  el.innerHTML = rows.map(a => `
+    <div style="border-bottom:1px solid var(--border); padding:10px 0;">
+      <strong>${esc(a.patient_name)} (${esc(a.mr_number)})</strong> — ${esc(a.ward)} ${a.room ? '/ '+esc(a.room) : ''}
+      <span class="muted">— admitted by ${esc(a.admitting_doctor)}</span><br>
+      <span class="muted">Reason: ${esc(a.reason||'—')}</span>
+      <div style="margin-top:6px;">
+        ${a.orders.map(o => `<div>• ${esc(o.order_text)} <span class="badge ${o.status==='done'?'done':'wait'}">${esc(o.status)}</span>
+          ${o.administrations.length ? `<span class="muted"> — last given ${esc(o.administrations[0].administered_at)}</span>` : ''}</div>`).join('')}
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <input placeholder="New order (e.g. IV fluids, vitals q4h)" class="newOrderText" data-adm="${a.id}">
+        <select class="newOrderPriority" data-adm="${a.id}"><option value="routine">Routine</option><option value="urgent">Urgent</option></select>
+        <button class="secondary" onclick="addOrder(${a.id})">Add Order</button>
+      </div>
+      <div style="margin-top:8px;">
+        ${a.discharge_summary
+          ? `<span class="muted">Discharge summary already on file.</span> <button class="secondary" onclick='writeDischargeSummary(${a.id}, ${JSON.stringify(a.discharge_summary)})'>Edit Summary</button>`
+          : `<button class="secondary" onclick="writeDischargeSummary(${a.id}, null)">Write Discharge Summary</button>`}
+      </div>
+    </div>`).join('');
+}
+
+async function addOrder(admissionId) {
+  const text = document.querySelector(`.newOrderText[data-adm="${admissionId}"]`).value.trim();
+  const priority = document.querySelector(`.newOrderPriority[data-adm="${admissionId}"]`).value;
+  if (!text) return;
+  await api(`/api/admissions/${admissionId}/orders`, { method: 'POST', body: JSON.stringify({ order_text: text, priority }) });
+  loadInpatients();
+}
+
+async function writeDischargeSummary(admissionId, existing) {
+  const diagnosis_summary = prompt('Diagnosis summary:', existing?.diagnosis_summary || '');
+  if (diagnosis_summary === null) return;
+  const condition_at_discharge = prompt('Condition at discharge:', existing?.condition_at_discharge || '') || '';
+  const discharge_instructions = prompt('Discharge instructions:', existing?.discharge_instructions || '') || '';
+  const follow_up = prompt('Follow-up plan:', existing?.follow_up || '') || '';
+  await api(`/api/admissions/${admissionId}/discharge-summary`, { method: 'POST', body: JSON.stringify({
+    diagnosis_summary, condition_at_discharge, discharge_instructions, follow_up
+  })});
+  loadInpatients();
+}
+
+// ===== New patient queue =====
+async function loadQueue() {
+  const rows = await api('/api/visits/queue');
+  const el = document.getElementById('queue');
+  if (!rows.length) { el.innerHTML = '<p class="muted">No patients waiting.</p>'; return; }
+  el.innerHTML = '<table><tr><th>MR#</th><th>Name</th><th>Age/Gender</th><th>Reason</th><th></th></tr>' +
+    rows.map(v => `<tr><td>${esc(v.mr_number)}</td><td>${esc(v.patient_name)}</td><td>${esc(v.age)} ${esc(v.gender)}</td>
+      <td>${esc(v.reason)}</td><td><button class="secondary" onclick="openVisit(${v.id}, '${esc(v.mr_number)}', '${esc(v.patient_name)}')">Open</button></td></tr>`).join('') + '</table>';
+}
+
+// ===== Visit detail panel (shared by every entry point above) =====
+async function openVisit(visitId, mr, name) {
+  document.getElementById('detailCard').style.display = 'block';
+  document.getElementById('detailTitle').textContent = `${name} (${mr})`;
+  selectedTests = [];
+  selectedRad = [];
+  currentVisitMr = mr;
+  document.getElementById('detailBody').innerHTML = `
+    <h3>Known Drug Allergies</h3>
+    <div class="row" style="align-items:end;">
+      <div style="flex:2;"><input id="allergiesField" placeholder="e.g. Penicillin, Sulfa drugs"></div>
+      <div><button class="secondary" onclick="saveAllergies('${esc(mr)}')">Save</button></div>
+    </div>
+    <div id="allergiesMsg" class="success" style="margin-bottom:10px;"></div>
+
+    <h3>Completed Lab / Radiology Results (this visit)</h3>
+    <div id="pastResults"><p class="muted">Loading…</p></div>
+
+    <h3 style="margin-top:24px;">Examination</h3>
+    <label>Notes</label><textarea id="exNotes"></textarea>
+    <label>Diagnosis</label><input id="exDiag">
+    <button class="primary" onclick="saveExam(${visitId})">Save Examination</button>
+    <div id="examMsg" class="success"></div>
+
+    <h3 style="margin-top:24px;">Lab Referral</h3>
+    <label>Search tests (type to filter)</label>
+    <div style="position:relative;"><input id="testSearch" placeholder="e.g. CBC, LFTs, Blood Sugar..."></div>
+    <div id="testChips" style="margin:8px 0;"></div>
+    <button class="primary" onclick="orderLab(${visitId})">Send to Lab</button>
+    <div id="labMsg" class="success"></div>
+
+    <h3 style="margin-top:24px;">Radiology Referral</h3>
+    <label>Search studies (type to filter)</label>
+    <div style="position:relative;"><input id="radSearch" placeholder="e.g. X-Ray, Ultrasound..."></div>
+    <div id="radChips" style="margin:8px 0;"></div>
+    <button class="primary" onclick="orderRad(${visitId})">Send to Radiology</button>
+    <div id="radMsg" class="success"></div>
+
+    <h3 style="margin-top:24px;">Admit to Ward (Inpatient)</h3>
+    <div class="row">
+      <div><label>Ward</label><input id="admWard" placeholder="e.g. Surgical Ward"></div>
+      <div><label>Room / Bed</label><input id="admRoom"></div>
+    </div>
+    <label>Reason for admission</label><input id="admReason">
+    <button class="primary" onclick="admitPatient(${visitId})">Admit Patient</button>
+    <div id="admMsg" class="success"></div>
+
+    <h3 style="margin-top:24px;">Prescription</h3>
+    <div id="medRows"></div>
+    <button class="secondary" type="button" onclick="addMedRow()">+ Add medicine</button>
+    <div id="rxSafetyWarnings" style="margin:10px 0;"></div>
+    <br><button class="primary" onclick="savePrescription(${visitId})">Save Prescription (send to pharmacy)</button>
+    <div id="rxMsg" class="success"></div>
+
+    <h3 style="margin-top:24px;">Prescriptions on this Visit</h3>
+    <div id="rxList"><p class="muted">Loading…</p></div>
+
+    <h3 style="margin-top:24px;">Full Record</h3>
+    <a href="/patient-record.html?mr=${encodeURIComponent(mr)}" target="_blank">View full patient record →</a>
+    <br><br>
+    <button class="secondary" onclick="closeVisit(${visitId})">Close this visit</button>
+  `;
+  addMedRow();
+  attachAutocomplete(document.getElementById('testSearch'),
+    q => api('/api/tests/search?q=' + encodeURIComponent(q)),
+    item => { if (!selectedTests.find(t => t.name === item.name)) selectedTests.push(item); renderTestChips(); document.getElementById('testSearch').value = ''; },
+    item => `${item.name} (${item.category})`);
+  attachAutocomplete(document.getElementById('radSearch'),
+    q => api('/api/tests/search?q=' + encodeURIComponent(q) + '&category=Radiology'),
+    item => { if (!selectedRad.find(t => t.name === item.name)) selectedRad.push(item); renderRadChips(); document.getElementById('radSearch').value = ''; },
+    item => item.name);
+  loadVisitPrescriptions(visitId);
+  loadPastResults(visitId, mr);
+}
+
+async function loadPastResults(visitId, mr) {
+  const { patient, visits } = await api('/api/patients/' + encodeURIComponent(mr) + '/record');
+  const allergiesField = document.getElementById('allergiesField');
+  if (allergiesField) allergiesField.value = patient.allergies || '';
+  const v = visits.find(v => v.id === visitId);
+  const el = document.getElementById('pastResults');
+  if (!v) { el.innerHTML = '<p class="muted">—</p>'; return; }
+  // Lab orders now carry the payment-gated workflow's own status vocabulary
+  // (PENDING_PAYMENT -> PAID -> SAMPLE_COLLECTED -> IN_PROCESS -> RESULT_ENTERED
+  // -> VERIFIED -> DELIVERED); results exist and are worth showing to the doctor
+  // from RESULT_ENTERED onward, regardless of whether the lab has verified,
+  // printed, or handed over the paper report yet. 'done' is kept for any
+  // pre-upgrade historical order that predates this vocabulary.
+  const doneLab = v.lab_orders.filter(o => ['RESULT_ENTERED', 'VERIFIED', 'DELIVERED', 'done'].includes(o.status));
+  const doneRad = v.radiology_orders.filter(o => o.status === 'done');
+  if (!doneLab.length && !doneRad.length) { el.innerHTML = '<p class="muted">No completed results yet for this visit.</p>'; return; }
+  el.innerHTML =
+    doneLab.map(o => `<div style="margin-bottom:8px;"><strong>${o.tests.map(esc).join(', ')}</strong><br>
+      ${(o.results||[]).map(r => r.components
+        ? r.components.map(c => `${esc(c.name)}: ${esc(c.value)} ${esc(c.unit||'')} <span class="result-flag ${c.flag||''}">${c.flag ? c.flag.toUpperCase() : ''}</span>`).join('<br>')
+        : `${esc(r.test)}: ${esc(r.value)} ${esc(r.unit||'')} <span class="result-flag ${r.flag||''}">${r.flag ? r.flag.toUpperCase() : ''}</span>`
+      ).join('<br>')}
+    </div>`).join('') +
+    doneRad.map(o => `<div style="margin-bottom:8px;"><strong>${o.tests.map(esc).join(', ')}</strong><br>
+      ${(o.results||[]).map(r => `${esc(r.test)}: ${esc(r.findings)}`).join('<br>')}
+    </div>`).join('');
+}
+
+function renderTestChips() {
+  document.getElementById('testChips').innerHTML = selectedTests.map((t, i) =>
+    `<span class="badge wait" style="margin:2px;">${esc(t.name)} <a href="javascript:void(0)" onclick="removeTest(${i})" style="color:inherit;">✕</a></span>`).join('') || '<span class="muted">No tests selected yet.</span>';
+}
+function removeTest(i) { selectedTests.splice(i, 1); renderTestChips(); }
+
+function renderRadChips() {
+  document.getElementById('radChips').innerHTML = selectedRad.map((t, i) =>
+    `<span class="badge wait" style="margin:2px;">${esc(t.name)} <a href="javascript:void(0)" onclick="removeRad(${i})" style="color:inherit;">✕</a></span>`).join('') || '<span class="muted">No studies selected yet.</span>';
+}
+function removeRad(i) { selectedRad.splice(i, 1); renderRadChips(); }
+
+function addMedRow(prefill) {
+  const wrap = document.getElementById('medRows');
+  const row = document.createElement('div');
+  row.className = 'item-row';
+  row.style.position = 'relative';
+  row.innerHTML = `<span style="position:relative; flex:1;"><input placeholder="Medicine name" class="medName" value="${esc(prefill?.name||'')}"></span>
+    <input placeholder="Dosage (e.g. 500mg twice daily)" class="medDose" value="${esc(prefill?.dosage||'')}">
+    <input placeholder="Qty" class="medQty" style="max-width:70px;" value="${esc(prefill?.qty||'')}">
+    <button class="secondary" type="button" onclick="this.parentElement.remove(); checkRxSafety();">✕</button>`;
+  wrap.appendChild(row);
+  attachAutocomplete(row.querySelector('.medName'), q => api('/api/drugs/search?q=' + encodeURIComponent(q)), () => checkRxSafety(), item => item.name);
+  row.querySelector('.medName').addEventListener('blur', () => checkRxSafety());
+}
+
+// Non-blocking drug-drug / drug-allergy check — re-run whenever the medicine
+// list on this prescription changes. Never stops the doctor from prescribing
+// anything; it only surfaces what routes/pharmacy.routes.js's safety-check
+// endpoint knows about (a short seeded interaction list + this patient's own
+// allergies field above) so it can be double-checked before saving.
+async function checkRxSafety() {
+  const el = document.getElementById('rxSafetyWarnings');
+  if (!el) return;
+  const names = [...document.querySelectorAll('#medRows .medName')].map(i => i.value.trim()).filter(Boolean);
+  if (!names.length || !currentVisitMr) { el.innerHTML = ''; return; }
+  try {
+    const result = await api('/api/pharmacy/safety-check?drugs=' + encodeURIComponent(names.join(',')) + '&mr=' + encodeURIComponent(currentVisitMr));
+    if (!result.hasWarnings) { el.innerHTML = ''; return; }
+    const rows = [
+      ...result.allergyWarnings.map(w => `<div class="stock-flag expired" style="display:inline-block; margin:2px 0;">⚠ ALLERGY: patient has a noted allergy matching "${esc(w.allergyTerm)}" — prescribed: ${esc(w.drug)}</div>`),
+      ...result.interactionWarnings.map(w => `<div class="stock-flag ${w.severity === 'severe' ? 'expired' : 'near_30'}" style="display:inline-block; margin:2px 0;">⚠ ${esc(w.severity.toUpperCase())} INTERACTION: ${esc(w.drugA)} + ${esc(w.drugB)} — ${esc(w.note || '')}</div>`)
+    ];
+    el.innerHTML = rows.map(r => `<div>${r}</div>`).join('');
+  } catch { /* non-critical — never block prescribing on this check failing */ }
+}
+
+async function saveAllergies(mr) {
+  const msg = document.getElementById('allergiesMsg');
+  try {
+    await api('/api/patients/' + encodeURIComponent(mr) + '/allergies', { method: 'PUT', body: JSON.stringify({ allergies: document.getElementById('allergiesField').value }) });
+    msg.textContent = 'Saved.';
+    checkRxSafety();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function saveExam(visitId) {
+  await api(`/api/visits/${visitId}/examination`, { method: 'POST', body: JSON.stringify({
+    notes: document.getElementById('exNotes').value, diagnosis: document.getElementById('exDiag').value
+  })});
+  document.getElementById('examMsg').textContent = 'Saved.';
+  loadQueue(); loadResultsReady();
+}
+
+async function orderLab(visitId) {
+  if (!selectedTests.length) { toast('Select at least one test.', 'error'); return; }
+  try {
+    // The lab now requires payment before any specimen or result activity, so a
+    // test with no price set at all cannot be ordered — the server rejects it
+    // outright rather than accepting an order it could never bill.
+    await api(`/api/visits/${visitId}/lab-order`, { method: 'POST', body: JSON.stringify({ tests: selectedTests.map(t => t.name) }) });
+    document.getElementById('labMsg').textContent = 'Sent to lab — patient must pay at the lab/reception counter before sample collection.';
+    selectedTests = []; renderTestChips();
+    loadQueue();
+  } catch (ex) { toast(ex.message, 'error'); }
+}
+
+async function orderRad(visitId) {
+  if (!selectedRad.length) { toast('Select at least one study.', 'error'); return; }
+  await api(`/api/visits/${visitId}/radiology-order`, { method: 'POST', body: JSON.stringify({ tests: selectedRad.map(t => t.name) }) });
+  document.getElementById('radMsg').textContent = 'Sent to radiology.';
+  selectedRad = []; renderRadChips();
+  loadQueue();
+}
+
+async function admitPatient(visitId) {
+  const ward = document.getElementById('admWard').value;
+  const room = document.getElementById('admRoom').value;
+  const reason = document.getElementById('admReason').value;
+  if (!ward) { toast('Enter a ward.', 'error'); return; }
+  await api(`/api/visits/${visitId}/admit`, { method: 'POST', body: JSON.stringify({ ward, room, reason }) });
+  document.getElementById('admMsg').textContent = 'Patient admitted. Visible on the Inpatients page — add doctor orders there.';
+  loadCensus(); loadInpatients();
+}
+
+async function savePrescription(visitId) {
+  const rows = [...document.querySelectorAll('#medRows .item-row')];
+  const medicines = rows.map(r => ({
+    name: r.querySelector('.medName').value, dosage: r.querySelector('.medDose').value, qty: r.querySelector('.medQty').value
+  })).filter(m => m.name);
+  if (!medicines.length) { toast('Add at least one medicine.', 'error'); return; }
+  await api(`/api/visits/${visitId}/prescription`, { method: 'POST', body: JSON.stringify({ medicines }) });
+  document.getElementById('rxMsg').textContent = 'Sent to pharmacy.';
+  document.getElementById('medRows').innerHTML = ''; addMedRow();
+  loadQueue();
+  loadVisitPrescriptions(visitId);
+}
+
+async function loadVisitPrescriptions(visitId) {
+  const rows = await api(`/api/visits/${visitId}/prescriptions`);
+  const el = document.getElementById('rxList');
+  if (!rows.length) { el.innerHTML = '<p class="muted">None yet.</p>'; return; }
+  el.innerHTML = rows.map(rx => `
+    <div style="border-bottom:1px solid var(--border); padding:8px 0;">
+      <span class="badge ${rx.status==='dispensed'?'done':'wait'}">${esc(rx.status)}</span>
+      ${rx.medicines.map(m => `${esc(m.name)} — ${esc(m.dosage)} (qty ${esc(m.qty)})`).join('<br>')}
+      ${rx.status === 'pending' ? `<br><button class="secondary" style="margin-top:6px;" onclick='editPrescription(${rx.id}, ${JSON.stringify(rx.medicines)}, ${visitId})'>Edit Prescription</button>` :
+        `<br><span class="muted">Already dispensed by pharmacy — can no longer be edited.</span>`}
+    </div>`).join('');
+}
+
+function editPrescription(rxId, medicines, visitId) {
+  document.getElementById('medRows').innerHTML = '';
+  medicines.forEach(m => addMedRow(m));
+  const btn = document.createElement('button');
+  btn.className = 'primary';
+  btn.textContent = 'Save Changes to Prescription';
+  btn.onclick = async () => {
+    const rows = [...document.querySelectorAll('#medRows .item-row')];
+    const meds = rows.map(r => ({
+      name: r.querySelector('.medName').value, dosage: r.querySelector('.medDose').value, qty: r.querySelector('.medQty').value
+    })).filter(m => m.name);
+    if (!meds.length) { toast('Add at least one medicine.', 'error'); return; }
+    try {
+      await api(`/api/prescriptions/${rxId}`, { method: 'PUT', body: JSON.stringify({ medicines: meds }) });
+      document.getElementById('rxMsg').textContent = 'Prescription updated and pushed to pharmacy.';
+      toast('Prescription updated and sent to pharmacy.', 'success');
+      loadVisitPrescriptions(visitId);
+      btn.remove();
+    } catch (ex) { toast(ex.message, 'error'); }
+  };
+  document.getElementById('rxMsg').insertAdjacentElement('beforebegin', btn);
+  window.scrollTo({ top: document.getElementById('medRows').offsetTop - 100, behavior: 'smooth' });
+}
+
+async function closeVisit(visitId) {
+  if (!confirm('Close this visit?')) return;
+  await api('/api/visits/close', { method: 'POST', body: JSON.stringify({ visit_id: visitId }) });
+  document.getElementById('detailCard').style.display = 'none';
+  loadQueue(); loadResultsReady(); loadCensus();
+}
+</script>
+</body>
+</html>

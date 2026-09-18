@@ -1,0 +1,12 @@
+{
+  "name": "alnoor-clinic-system",
+  "version": "1.0.0",
+  "description": "Offline LAN clinic workflow system for Al Noor Specialist Hospital",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

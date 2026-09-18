@@ -1,0 +1,13 @@
+# Runtime data — never committed (contains real patient records)
+data/
+*.db
+*.db-wal
+*.db-shm
+.jwt_secret
+
+# PM2 logs
+logs/
+*.log
+
+# Just in case (this app has zero npm dependencies by design)
+node_modules/
