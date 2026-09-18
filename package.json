@@ -1,0 +1,28 @@
+{
+  "name": "al-noor-clinical-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Al Noor Specialist Hospital clinical management app, integrated with the Python serial LIMS daemon via a shared SQLite database.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "NODE_ENV=development node server.js",
+    "test:integration": "node scripts/test_integration.js",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop ecosystem.config.js",
+    "pm2:restart": "pm2 restart ecosystem.config.js",
+    "pm2:logs": "pm2 logs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "chokidar": "^3.6.0",
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "pm2": "^5.4.2"
+  }
+}

@@ -84,7 +84,27 @@ class Database:
     def _init_schema(self) -> None:
         with self._conn:
             self._conn.executescript(_SCHEMA_PATH.read_text(encoding="utf-8"))
+        self._migrate_legacy_columns()
         logger.debug("Schema ensured at %s", self.db_path)
+
+    def _migrate_legacy_columns(self) -> None:
+        """Add columns introduced after a database file was first created.
+
+        CREATE TABLE IF NOT EXISTS in schema.sql only applies to brand-new
+        databases -- a lab_results table created before the Node.js
+        acknowledgment columns existed needs them added explicitly.
+        """
+        existing = {row["name"] for row in self._conn.execute("PRAGMA table_info(lab_results)")}
+        migrations = {
+            "acknowledged": "ALTER TABLE lab_results ADD COLUMN acknowledged INTEGER NOT NULL DEFAULT 0",
+            "acknowledged_by": "ALTER TABLE lab_results ADD COLUMN acknowledged_by TEXT",
+            "acknowledged_at": "ALTER TABLE lab_results ADD COLUMN acknowledged_at TEXT",
+        }
+        with self._conn:
+            for column, statement in migrations.items():
+                if column not in existing:
+                    self._conn.execute(statement)
+                    logger.info("Migrated lab_results: added column %s", column)
 
     @contextmanager
     def _cursor(self) -> Iterator[sqlite3.Cursor]:
